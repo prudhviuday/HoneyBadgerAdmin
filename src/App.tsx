@@ -21,7 +21,7 @@ const columns: Record<string, string[]> = {
   Venues: ["name", "venue_type", "city", "state", "active"],
   "QR Manager": ["public_code", "purpose", "campaign_id", "is_active"],
 };
-const label = (v: string) => v.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
 
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
