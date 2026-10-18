@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { Activity, Building2, Clapperboard, Film, LayoutDashboard, LogOut, Plus, QrCode, RefreshCw, CalendarDays, Search, ShieldCheck, Copy, ExternalLink, X, Save, UserRound, Phone, Mail, Clock3 } from "lucide-react";
+import { Activity, Building2, Clapperboard, Film, LayoutDashboard, LogOut, Plus, QrCode, RefreshCw, CalendarDays, Search, ShieldCheck, Copy, ExternalLink, X, Save, UserRound, Phone, Mail, Clock3, ListChecks, ClipboardList } from "lucide-react";
 import "./styles.css";
 
 type Config = { url?: string; anonKey?: string };
 type RecordRow = Record<string, any>;
-type Section = "Overview" | "Movies" | "Campaigns" | "Events & Hunts" | "Venues" | "QR Manager" | "User Activity";
+type Section = "Overview" | "Movies" | "Campaigns" | "Events & Hunts" | "Venues" | "QR Manager" | "User Activity" | "Activity & Tasks";
 const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Overview", icon: LayoutDashboard },
   { name: "Movies", icon: Film, table: "movies" },
@@ -14,6 +14,7 @@ const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Venues", icon: Building2, table: "venues" },
   { name: "QR Manager", icon: QrCode, table: "qr_codes" },
   { name: "User Activity", icon: UserRound },
+  { name: "Activity & Tasks", icon: ListChecks },
 ];
 const columns: Record<string, string[]> = {
   Movies: ["title", "language", "release_date", "active"],
@@ -216,7 +217,7 @@ export default function App() {
     <main><header className="topbar"><span>Workspace / <b>{section}</b></span><div><span className="live">● LIVE DATA</span><button className="icon-button" title="Refresh data" onClick={() => loadData()}><RefreshCw size={16}/></button><button className="icon-button" title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></header>
       <div className="content"><div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>Manage the same live data used by the Honeybadger app.</p></div>{["Movies","Campaigns","Venues"].includes(section) && <button className="button" onClick={() => { setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true } : section === "Campaigns" ? { name: "", active: true } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(!showAdd); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section.slice(0,-1).toLowerCase()}</button>}</div>
       {error && <div className="error">{error}</div>}{notice && <div className="notice">{notice}</div>}
-      {section === "User Activity" ? <UserActivityPanel db={db} /> : section === "Overview" ? <><div className="hero"><span className="eyebrow">SYSTEM OVERVIEW</span><h2>Every campaign.<br/><em>One command centre.</em></h2><p>Manage movie records, campaigns, events, partner venues and QR codes connected to your production marketing.</p></div><div className="stats">{[{name:"Movies",icon:Film},{name:"Campaigns",icon:Activity},{name:"Events & Hunts",icon:CalendarDays},{name:"Venues",icon:Building2},{name:"QR Manager",icon:QrCode}].map(s=><button className="stat" key={s.name} onClick={() => setSection(s.name as Section)}><s.icon size={18}/><span>{s.name}</span><b>{total(s.name)}</b></button>)}</div><div className="panel"><h3>Recent movies</h3><DataTable rows={(rows.Movies || []).slice(0,8)} columns={columns.Movies}/></div></> : <>
+      {section === "User Activity" ? <UserActivityPanel db={db} /> : section === "Activity & Tasks" ? <ActivityTasksPanel db={db} campaigns={rows.Campaigns || []} onRefresh={loadData} /> : section === "Overview" ? <><div className="hero"><span className="eyebrow">SYSTEM OVERVIEW</span><h2>Every campaign.<br/><em>One command centre.</em></h2><p>Manage movie records, campaigns, events, partner venues and QR codes connected to your production marketing.</p></div><div className="stats">{[{name:"Movies",icon:Film},{name:"Campaigns",icon:Activity},{name:"Events & Hunts",icon:CalendarDays},{name:"Venues",icon:Building2},{name:"QR Manager",icon:QrCode}].map(s=><button className="stat" key={s.name} onClick={() => setSection(s.name as Section)}><s.icon size={18}/><span>{s.name}</span><b>{total(s.name)}</b></button>)}</div><div className="panel"><h3>Recent movies</h3><DataTable rows={(rows.Movies || []).slice(0,8)} columns={columns.Movies}/></div></> : <>
       {showAdd && <form className="add-form" onSubmit={addRecord}><h3>New {section === "Venues" ? "venue" : section.slice(0,-1).toLowerCase()}</h3>
         {section === "Movies" && <><label>Movie title<input required value={draft.title || ""} onChange={e => setDraft({...draft,title:e.target.value})}/></label><label>Language<input value={draft.language || ""} onChange={e => setDraft({...draft,language:e.target.value})}/></label><label>Release date<input type="date" value={draft.release_date || ""} onChange={e => setDraft({...draft,release_date:e.target.value})}/></label><label>Poster URL<input type="url" value={draft.poster_url || ""} onChange={e => setDraft({...draft,poster_url:e.target.value})}/></label></>}
         {section === "Campaigns" && <><label>Campaign name<input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})}/></label><label>Movie ID<input placeholder="Paste movie UUID" value={draft.movie_id || ""} onChange={e => setDraft({...draft,movie_id:e.target.value})}/></label><label>Media URL<input type="url" value={draft.media_url || ""} onChange={e => setDraft({...draft,media_url:e.target.value})}/></label></>}
@@ -262,6 +263,189 @@ function DataTable({rows, columns = [], onRowClick}: {rows: RecordRow[]; columns
   if (!rows.length) return <div className="empty">No records found.</div>;
   const keys = columns.length ? columns : Object.keys(rows[0]).filter(k => !["id","created_at","updated_at","metadata"].includes(k)).slice(0,5);
   return <div className="table-scroll"><table><thead><tr>{keys.map(k=><th key={k}>{label(k)}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.id || i} className={onRowClick ? "clickable-row" : undefined} onClick={onRowClick ? () => onRowClick(r) : undefined} title={onRowClick ? "Click to view and edit QR details" : undefined}>{keys.map(k=><td key={k}>{typeof r[k] === "boolean" ? <span className={r[k] ? "badge yes" : "badge"}>{r[k] ? "Active" : "Inactive"}</span> : r[k] == null || r[k] === "" ? "—" : String(r[k]).length > 70 ? String(r[k]).slice(0,67)+"…" : String(r[k])}</td>)}</tr>)}</tbody></table></div>;
+}
+
+
+
+
+type ActivityCategory = { id: number; code: string; description: string; is_important: boolean };
+type TaskRow = RecordRow & {
+  id: string; name: string; campaign_id: string; mission_type: string;
+  target_value: number; reward_points: number; reward_entries: number; is_active: boolean;
+  progress_event_type_id?: number | null; progress_mode?: string;
+};
+
+function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; campaigns: RecordRow[]; onRefresh: () => Promise<void> }) {
+  const [categories, setCategories] = useState<ActivityCategory[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [events, setEvents] = useState<RecordRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [supportsConfiguredProgress, setSupportsConfiguredProgress] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [code, setCode] = useState("");
+  const [description, setDescription] = useState("");
+  const [important, setImportant] = useState(true);
+  const [taskName, setTaskName] = useState("");
+  const [taskDescription, setTaskDescription] = useState("");
+  const [campaignId, setCampaignId] = useState("");
+  const [activityTypeId, setActivityTypeId] = useState("");
+  const [missionType, setMissionType] = useState("referral_friend_qualified");
+  const [progressMode, setProgressMode] = useState<"event_count" | "distinct_entities">("event_count");
+  const [target, setTarget] = useState("3");
+  const [points, setPoints] = useState("50");
+  const [entries, setEntries] = useState("0");
+  const [filter, setFilter] = useState("");
+
+  async function refresh() {
+    setLoading(true);
+    setError("");
+    const [categoryResult, taskResult, eventResult, configProbe] = await Promise.all([
+      db.from("activity_event_types").select("id,code,description,is_important").order("id"),
+      db.from("missions").select("*").order("created_at", { ascending: false }).limit(500),
+      db.from("activity_events").select("*").order("created_at", { ascending: false }).limit(100),
+      db.from("missions").select("progress_event_type_id,progress_mode").limit(1),
+    ]);
+    if (categoryResult.error) setError("Could not load activity categories: " + categoryResult.error.message);
+    else setCategories((categoryResult.data || []) as ActivityCategory[]);
+    if (taskResult.error) setError("Could not load tasks: " + taskResult.error.message);
+    else setTasks((taskResult.data || []) as TaskRow[]);
+    if (eventResult.error) setError("Could not load activity log: " + eventResult.error.message);
+    else setEvents(eventResult.data || []);
+    setSupportsConfiguredProgress(!configProbe.error);
+    setLoading(false);
+  }
+
+  useEffect(() => { void refresh(); }, [db]);
+
+  async function createCategory(e: FormEvent) {
+    e.preventDefault();
+    const cleanName = displayName.trim();
+    const cleanCode = code.trim();
+    if (!cleanName || !/^[a-z][a-z0-9_]{2,62}$/.test(cleanCode)) {
+      setError("Enter a display name and a stable code (lowercase letters, digits and underscores).");
+      return;
+    }
+    setSaving(true); setError(""); setNotice("");
+    const nextId = Math.max(0, ...categories.map(item => item.id)) + 1;
+    const { error: insertError } = await db.from("activity_event_types").insert({
+      id: nextId, code: cleanCode, description: description.trim() || cleanName, is_important: important,
+    });
+    if (insertError) setError("Could not create activity category: " + insertError.message);
+    else {
+      setNotice("Created activity category " + nextId + " (" + cleanCode + "). Category IDs identify the type; each occurrence has its own record.");
+      setDisplayName(""); setCode(""); setDescription(""); setImportant(true);
+      await refresh();
+    }
+    setSaving(false);
+  }
+
+  async function createTask(e: FormEvent) {
+    e.preventDefault();
+    const targetNumber = Number(target), pointsNumber = Number(points), entriesNumber = Number(entries);
+    const selectedCategory = categories.find(item => item.id === Number(activityTypeId));
+    if (!taskName.trim() || !campaignId || !Number.isInteger(targetNumber) || targetNumber < 1 ||
+      !Number.isInteger(pointsNumber) || pointsNumber < 0 || !Number.isInteger(entriesNumber) || entriesNumber < 0) {
+      setError("Choose a campaign and enter a target of at least 1 plus non-negative whole-number rewards.");
+      return;
+    }
+    if (supportsConfiguredProgress && !selectedCategory) {
+      setError("Choose the activity category that should advance this task.");
+      return;
+    }
+    setSaving(true); setError(""); setNotice("");
+    const payload: RecordRow = {
+      name: taskName.trim(),
+      description: taskDescription.trim() || null,
+      campaign_id: campaignId,
+      mission_type: supportsConfiguredProgress && selectedCategory ? selectedCategory.code : missionType.trim(),
+      target_value: targetNumber,
+      reward_points: pointsNumber,
+      reward_entries: entriesNumber,
+      is_active: true,
+    };
+    if (supportsConfiguredProgress && selectedCategory) {
+      payload.progress_event_type_id = selectedCategory.id;
+      payload.progress_mode = progressMode;
+    }
+    const { error: insertError } = await db.from("missions").insert(payload);
+    if (insertError) setError("Could not create task: " + insertError.message);
+    else {
+      setNotice(supportsConfiguredProgress
+        ? "Task created. Its selected activity category and progress mode are saved."
+        : "Task created using the existing mission fields. Event-category-driven progress is not enabled in the database yet; apply the activity-task-engine migration before relying on automatic activity matching.");
+      setTaskName(""); setTaskDescription(""); setTarget("3"); setPoints("50"); setEntries("0");
+      await refresh(); await onRefresh();
+    }
+    setSaving(false);
+  }
+
+  async function toggleTask(task: TaskRow) {
+    setSaving(true); setError(""); setNotice("");
+    const { data, error: updateError } = await db.from("missions").update({ is_active: !task.is_active }).eq("id", task.id).select("id");
+    if (updateError) setError("Could not update task: " + updateError.message);
+    else if (!data?.length) setError("No task was updated. Check admin permissions and refresh.");
+    else { setNotice("Task " + (task.is_active ? "paused" : "activated") + "."); await refresh(); await onRefresh(); }
+    setSaving(false);
+  }
+
+  const pretty = (value: unknown) => String(value ?? "—").replace(/_/g, " ").replace(/\b\w/g, letter => letter.toUpperCase());
+  const visibleEvents = events.filter(event => JSON.stringify(event).toLowerCase().includes(filter.toLowerCase()));
+  const eventNumber = (event: RecordRow) => event.activity_number ?? event.id;
+  const eventCode = (event: RecordRow) => categories.find(item => item.id === Number(event.event_type_id))?.code || event.event_type || "Unknown activity";
+
+  return <div className="activity-task-page">
+    <div className="page-title"><div><p className="eyebrow">ADMIN / EVENT CONFIGURATION</p><h1>Activity & task management</h1><p>Create the activity categories, movie tasks and reward rules used by Honeybadger hunts.</p></div><div className="user-activity-icon"><ListChecks size={21}/></div></div>
+    {error && <div className="error" role="status">{error}</div>}
+    {notice && <div className="notice" role="status">{notice}</div>}
+    <div className="activity-task-metrics">
+      <div><small>Activity categories</small><b>{loading ? "—" : categories.length}</b></div>
+      <div><small>Configured tasks</small><b>{loading ? "—" : tasks.length}</b></div>
+      <div><small>Active tasks</small><b>{loading ? "—" : tasks.filter(task => task.is_active).length}</b></div>
+      <div><small>Recent activity records</small><b>{loading ? "—" : events.length}</b></div>
+    </div>
+    {!supportsConfiguredProgress && !loading && <div className="activity-task-warning"><ShieldCheck size={17}/><span>The database currently exposes the legacy task schema. Task creation works, but assigning a numeric activity category and counting distinct friends requires the numbered activity/task-engine migration.</span></div>}
+    <div className="activity-task-grid">
+      <form className="panel activity-task-form" onSubmit={createCategory}>
+        <h3><Activity size={17}/> Create activity category</h3>
+        <p className="activity-task-help">Register a reusable type such as a referral, QR scan, hunt start or reward earned.</p>
+        <label>Display name<input value={displayName} onChange={e => { const oldAuto = displayName.toLowerCase().trim().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,""); setDisplayName(e.target.value); if (!code || code === oldAuto) setCode(e.target.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"")); }} placeholder="Friend referral qualified" required/></label>
+        <label>Stable code<input value={code} onChange={e => setCode(e.target.value)} pattern="[a-z][a-z0-9_]{2,62}" placeholder="referral_friend_qualified" required/></label>
+        <label>Description<textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} placeholder="When should this event be recorded?"/></label>
+        <label className="activity-task-check"><input type="checkbox" checked={important} onChange={e => setImportant(e.target.checked)}/> Important for analytics</label>
+        <button className="button" disabled={saving}><Plus size={15}/>{saving ? "Saving…" : "Create category"}</button>
+        <small className="activity-task-help">IDs are kept stable after creation. Do not reuse an existing category ID.</small>
+      </form>
+      <section className="panel">
+        <div className="activity-task-section-heading"><div><h3>Activity registry</h3><p>Numeric type ID · stable code · importance</p></div><button className="icon-button" type="button" title="Refresh registry" onClick={() => void refresh()}><RefreshCw size={15}/></button></div>
+        {loading ? <div className="empty">Loading activity types…</div> : <div className="activity-category-list">{categories.map(item => <div key={item.id} className="activity-category-row"><b>{item.id}</b><div><strong>{item.code}</strong><small>{item.description}</small></div>{item.is_important && <span className="badge yes">Important</span>}</div>)}{!categories.length && <div className="empty">No activity categories found.</div>}</div>}
+      </section>
+    </div>
+    <div className="activity-task-grid activity-task-grid-bottom">
+      <form className="panel activity-task-form" onSubmit={createTask}>
+        <h3><Plus size={17}/> Create movie task</h3>
+        <p className="activity-task-help">Set the campaign, completion target and rewards.</p>
+        <label>Task name<input value={taskName} onChange={e => setTaskName(e.target.value)} placeholder="Refer 3 friends to this movie" required/></label>
+        <label>Description<textarea value={taskDescription} onChange={e => setTaskDescription(e.target.value)} rows={2} placeholder="Instructions visible to participants"/></label>
+        <label>Movie campaign<select value={campaignId} onChange={e => setCampaignId(e.target.value)} required><option value="">Choose campaign…</option>{campaigns.map(campaign => <option key={campaign.id} value={campaign.id}>{campaign.name}{campaign.active ? "" : " (inactive)"}</option>)}</select></label>
+        {supportsConfiguredProgress ? <><label>Qualifying activity category<select value={activityTypeId} onChange={e => setActivityTypeId(e.target.value)} required><option value="">Choose category…</option>{categories.map(item => <option key={item.id} value={item.id}>{item.id} · {item.code}</option>)}</select></label><label>Progress mode<select value={progressMode} onChange={e => setProgressMode(e.target.value as "event_count" | "distinct_entities")}><option value="event_count">Count qualifying events</option><option value="distinct_entities">Count unique friends / entities</option></select></label></> : <label>Legacy mission type<input value={missionType} onChange={e => setMissionType(e.target.value)} placeholder="referral_friend_qualified" required/></label>}
+        <div className="activity-task-field-row"><label>Target count<input type="number" min="1" step="1" value={target} onChange={e => setTarget(e.target.value)} required/></label><label>Reward points<input type="number" min="0" step="1" value={points} onChange={e => setPoints(e.target.value)} required/></label><label>Reward entries<input type="number" min="0" step="1" value={entries} onChange={e => setEntries(e.target.value)} required/></label></div>
+        <button className="button" disabled={saving || campaigns.length === 0}>{saving ? "Saving…" : "Create and activate task"}</button>
+        <small className="activity-task-help">This configures the task. Reward eligibility must be validated by trusted server-side logic, not browser-submitted points.</small>
+      </form>
+      <section className="panel">
+        <div className="activity-task-section-heading"><div><h3>Configured tasks</h3><p>Pause tasks without deleting their progress.</p></div><button className="icon-button" type="button" title="Refresh tasks" onClick={() => void refresh()}><RefreshCw size={15}/></button></div>
+        {loading ? <div className="empty">Loading tasks…</div> : <div className="activity-task-list">{tasks.map(task => <article key={task.id} className="activity-task-card"><div className="activity-task-card-top"><div><strong>{task.name}</strong><small>{campaigns.find(campaign => campaign.id === task.campaign_id)?.name || "Unknown campaign"} · {task.progress_event_type_id != null ? categories.find(item => item.id === task.progress_event_type_id)?.code || ("Type " + task.progress_event_type_id) : task.mission_type}</small></div><span className={task.is_active ? "badge yes" : "badge"}>{task.is_active ? "Active" : "Paused"}</span></div><div className="activity-task-card-bottom"><span>Target <b>{task.target_value}</b> · Points <b>{task.reward_points}</b> · Entries <b>{task.reward_entries}</b>{task.progress_mode ? " · " + pretty(task.progress_mode) : ""}</span><button type="button" className="secondary" disabled={saving} onClick={() => void toggleTask(task)}>{task.is_active ? "Pause" : "Activate"}</button></div></article>)}{!tasks.length && <div className="empty">No tasks configured yet.</div>}</div>}
+      </section>
+    </div>
+    <section className="panel activity-log-panel">
+      <div className="activity-task-section-heading"><div><h3><ClipboardList size={17}/> Recent activity log</h3><p>Each row is one occurrence; type IDs describe the category.</p></div><div className="activity-log-actions"><span>{visibleEvents.length} events</span><button className="icon-button" type="button" title="Refresh activity log" onClick={() => void refresh()}><RefreshCw size={15}/></button></div></div>
+      <div className="search activity-log-search"><Search size={15}/><input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter by type, user, campaign, entity…"/></div>
+      {loading ? <div className="empty">Loading activity…</div> : <div className="table-scroll"><table><thead><tr>{["Occurrence / record ID","Type ID","Activity type","User","Campaign","Entity","Recorded"].map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{visibleEvents.map(event => <tr key={String(event.id)}><td><code>{String(eventNumber(event)).slice(0,18)}</code></td><td>{event.event_type_id ?? "—"}</td><td>{eventCode(event)}</td><td><code>{event.user_id ? String(event.user_id).slice(0,8) + "…" : "system"}</code></td><td>{campaigns.find(campaign => campaign.id === event.campaign_id)?.name || (event.campaign_id ? String(event.campaign_id).slice(0,8) + "…" : "—")}</td><td>{pretty(event.entity_type)}{event.entity_id ? " · " + String(event.entity_id).slice(0,8) + "…" : ""}</td><td><AdminDate value={event.created_at}/></td></tr>)}</tbody></table>{!visibleEvents.length && <div className="empty">No activity records match this filter.</div>}</div>}
+    </section>
+  </div>;
 }
 
 
