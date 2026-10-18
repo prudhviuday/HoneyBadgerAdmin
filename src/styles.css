@@ -62,3 +62,24 @@
 .user-entity-id{margin-top:10px}.user-empty{padding:22px;text-align:center;border:1px dashed #393a42;border-radius:9px;color:#92939d;font-size:12px;margin:12px 0}
 .spin{animation:spin .8s linear infinite}
 @media(max-width:650px){.user-search-row{flex-direction:column}.user-search-row>.button{width:100%}.user-metrics{grid-template-columns:1fr}.user-detail-head{padding:16px}.user-timeline-heading{align-items:flex-start;flex-direction:column;margin:20px 16px 12px}.user-timeline{padding:0 12px 14px}.timeline-title-row{flex-direction:column;gap:6px}.user-result{padding:12px}}
+
+
+/* Consent-based user location history and recorded activity track */
+.user-location-section{margin-top:24px;border-top:1px solid var(--line);padding-top:4px}
+.user-map-frame{overflow:hidden;border:1px solid var(--line);border-radius:10px;background:#17181d}
+.user-map-frame iframe{display:block;width:100%;height:300px;border:0;background:#202126}
+.user-map-caption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:11px 13px;color:#a4a5ae;font-size:10px}
+.user-map-caption a,.user-track-list a{color:#ff9a62;text-decoration:none;white-space:nowrap}
+.user-map-caption a:hover,.user-track-list a:hover{text-decoration:underline}
+.user-track-card{margin-top:12px;padding:15px;border:1px solid var(--line);border-radius:10px;background:#15161a}
+.user-track-card-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.user-track-card-head b{font-size:12px;color:#eee}.user-track-card-head small{font-size:10px;color:#858690}
+.user-track-plot{display:block;width:100%;max-height:220px;margin:10px auto 14px;border-radius:8px;background:linear-gradient(135deg,#222329,#17181d)}
+.user-track-list{display:grid;gap:0;list-style:none;margin:0;padding:0}
+.user-track-list li{display:flex;align-items:center;gap:11px;padding:12px 0;border-top:1px solid #2a2b32}
+.user-track-number{display:grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:#30231c;color:#ff9a62;font:11px 'DM Mono'}
+.user-track-list li>div{display:grid;gap:5px;min-width:0;flex:1}
+.user-track-list li>div b{font-size:11px;color:#eee}
+.user-track-list li>div small{font-size:10px;color:#92939d}
+.user-track-list li>div code{font:10px 'DM Mono';color:#aaa;overflow-wrap:anywhere}
+@media(max-width:650px){.user-map-frame iframe{height:240px}.user-map-caption{flex-direction:column}.user-track-card{padding:11px}}
