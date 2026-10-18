@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Honeybadger Media — Campaign</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Supabase browser library -->
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+  :root{
+    --gold:#E8B34D;
+    --stripe:#F5F1E8;
+    --muted:#c9c4bd;
+    --line:rgba(245,241,232,0.18);
+  }
+
+  *{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+  }
+
+  html,body{
+    height:100%;
+  }
+
+  body{
+    font-family:'Work Sans',sans-serif;
+    color:var(--stripe);
+    background:#000;
+    overflow:hidden;
+  }
+
+  h1,.display{
+    font-family:'Anton',sans-serif;
+    text-transform:uppercase;
+    line-height:0.95;
+  }
+
+  #bg-video{
+    position:fixed;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    z-index:0;
+  }
+
+  #bg-overlay{
+    position:fixed;
+    inset:0;
+    z-index:1;
+    background:
+      linear-gradient(
+        180deg,
+        rgba(0,0,0,0.55) 0%,
+        rgba(0,0,0,0.75) 55%,
+        rgba(0,0,0,0.92) 100%
+      );
+  }
+
+  .screen{
+    position:relative;
+    z-index:2;
+    height:100%;
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+
+  .card{
+    width:100%;
+    max-width:420px;
+    background:rgba(18,16,19,0.72);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:36px 30px;
+    backdrop-filter:blur(6px);
+  }
+
+  .eyebrow{
+    color:var(--gold);
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:0.03em;
+    margin-bottom:10px;
+  }
+
+  h1{
+    font-size:clamp(28px,7vw,38px);
+    margin-bottom:14px;
+  }
+
+  .sub{
+    color:var(--muted);
+    font-size:15px;
+    margin-bottom:26px;
+  }
+
+  .gbtn-wrap{
+    margin-bottom:16px;
+  }
+
+  .google-btn{
+    width:100%;
+    background:#fff;
+    color:#222;
+    border:none;
+    padding:13px 15px;
+    font-weight:600;
+    font-size:15px;
+    border-radius:3px;
+    cursor:pointer;
+    font-family:inherit;
+  }
+
+  .google-btn:hover{
+    opacity:0.94;
+  }
+
+  .google-btn:disabled{
+    opacity:0.5;
+    cursor:not-allowed;
+  }
+
+  .divider{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    color:var(--muted);
+    font-size:13px;
+    margin:18px 0;
+  }
+
+  .divider::before,
+  .divider::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:var(--line);
+  }
+
+  .field{
+    margin-bottom:16px;
+  }
+
+  .field label{
+    display:block;
+    font-size:13px;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+
+  .field input{
+    width:100%;
+    background:rgba(255,255,255,0.06);
+    border:1px solid var(--line);
+    color:var(--stripe);
+    padding:13px 14px;
+    font-size:15px;
+    border-radius:3px;
+    font-family:inherit;
+  }
+
+  .field input:focus{
+    outline:none;
+    border-color:var(--gold);
+  }
+
+  .field input:disabled{
+    opacity:0.65;
+  }
+
+  .consent{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+    margin:20px 0;
+    font-size:13px;
+    color:var(--muted);
+  }
+
+  .consent input{
+    margin-top:3px;
+    flex-shrink:0;
+  }
+
+  .consent a{
+    color:var(--gold);
+    text-decoration:underline;
+  }
+
+  .btn{
+    width:100%;
+    background:var(--gold);
+    color:#121013;
+    border:none;
+    padding:15px;
+    font-weight:600;
+    font-size:15px;
+    border-radius:3px;
+    cursor:pointer;
+    font-family:inherit;
+  }
+
+  .btn:hover{
+    opacity:0.94;
+  }
+
+  .btn:disabled{
+    opacity:0.5;
+    cursor:not-allowed;
+  }
+
+  .shop-tag{
+    margin-top:18px;
+    text-align:center;
+    font-size:12px;
+    color:var(--muted);
+  }
+
+  .msg{
+    font-size:13px;
+    margin-top:14px;
+    text-align:center;
+    min-height:18px;
+  }
+
+  .msg.error{
+    color:#e8746a;
+  }
+
+  .msg.success{
+    color:#8fd19e;
+  }
+
+  .success-screen{
+    display:none;
+    text-align:center;
+  }
+
+  .success-screen h1{
+    font-size:32px;
+    margin-bottom:12px;
+  }
+
+  .success-screen p{
+    color:var(--muted);
+  }
+
+  @media(max-width:400px){
+    .card{
+      padding:28px 22px;
+    }
+  }
+</style>
+
+</head>
+
+<body>
+
+<video id="bg-video" autoplay muted loop playsinline></video>
+
+<div id="bg-overlay"></div>
+
+<div class="screen">
+
+  <!-- MAIN FORM -->
+
+  <div class="card" id="form-card">
+
+```
+<div class="eyebrow" id="campaign-name">
+  Honeybadger Media
+</div>
+
+<h1>
+  Watch the trailer.<br>
+  Win merch.
+</h1>
+
+<p class="sub">
+  Sign in to enter — your details are verified and used only as described below.
+</p>
+
+<!-- GOOGLE LOGIN -->
+<div class="gbtn-wrap">
+  <button
+    type="button"
+    class="google-btn"
+    id="google-btn">
+    Continue with Google
+  </button>
+</div>
+
+<div class="divider">
+  or enter manually
+</div>
+
+<!-- LEAD FORM -->
+<form id="lead-form">
+
+  <div class="field">
+    <label for="name">Name</label>
+
+    <input
+      id="name"
+      type="text"
+      required
+      placeholder="Your name">
+  </div>
+
+  <div class="field">
+    <label for="phone">Phone number</label>
+
+    <input
+      id="phone"
+      type="tel"
+      required
+      placeholder="10-digit mobile number"
+      inputmode="numeric"
+      maxlength="10"
+      pattern="[0-9]{10}">
+  </div>
+
+  <div class="field">
+    <label for="email">Email</label>
+
+    <input
+      id="email"
+      type="email"
+      placeholder="you@example.com">
+  </div>
+
+  <label class="consent">
+
+    <input
+      type="checkbox"
+      id="consent"
+      required>
+
+    <span>
+      I agree to share my name, phone number and email with
+      Honeybadger Media, to be contacted about this campaign and,
+      where I opt in separately, future campaigns from Honeybadger
+      Media's partner brands.
+
+      See
+      <a href="#" id="terms-link">
+        terms
+      </a>.
+    </span>
+
+  </label>
+
+  <button
+    type="submit"
+    class="btn"
+    id="submit-btn">
+    Enter now
+  </button>
+
+  <div
+    class="msg"
+    id="form-msg">
+  </div>
+
+</form>
+
+<div
+  class="shop-tag"
+  id="shop-tag">
+  General Campaign
+</div>
+```
+
+  </div>
+
+  <!-- SUCCESS -->
+
+  <div
+    class="card success-screen"
+    id="success-card">
+
+```
+<h1>
+  You're in.
+</h1>
+
+<p>
+  Keep an eye on your phone — winners are notified directly.
+</p>
+```
+
+  </div>
+
+</div>
+
+<script>
+
+/* ============================================================
+   SUPABASE CONFIGURATION
+   ============================================================ */
+
+const SUPABASE_URL =
+  "https://vorvkmklptldvgecfyso.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_8rl5-39n-iAwaTD5QEIGng_GYbZjFvN";
+
+
+/* ============================================================
+   CAMPAIGN CONFIGURATION
+   ============================================================
+
+   This is the existing Honeybadger test campaign.
+
+   General URL:
+   https://your-site.pages.dev/
+
+   Activation URL:
+   https://your-site.pages.dev/?shop=TNAGAR-TEST
+   ============================================================ */
+
+const CONFIG = {
+
+  CAMPAIGN_ID:
+    "40c8ba7c-d01b-4a44-901c-a36948503d2d",
+
+  MEDIA_SRC:
+    "",
+
+  CAMPAIGN_NAME:
+    "Honeybadger Media",
+
+  TERMS_URL:
+    ""
+
+};
+
+
+/* ============================================================
+   INITIALIZE SUPABASE
+   ============================================================ */
+
+let supabaseClient = null;
+
+try {
+
+  if (
+    window.supabase &&
+    typeof window.supabase.createClient === "function"
+  ) {
+
+    supabaseClient =
+      window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_PUBLISHABLE_KEY
+      );
+
+  } else {
+
+    console.error(
+      "Supabase browser library did not load."
+    );
+
+  }
+
+} catch (error) {
+
+  console.error(
+    "Supabase initialization error:",
+    error
+  );
+
+}
+
+
+/* ============================================================
+   DOM ELEMENTS
+   ============================================================ */
+
+const video =
+  document.getElementById("bg-video");
+
+const campaignName =
+  document.getElementById("campaign-name");
+
+const shopTag =
+  document.getElementById("shop-tag");
+
+const termsLink =
+  document.getElementById("terms-link");
+
+const form =
+  document.getElementById("lead-form");
+
+const msg =
+  document.getElementById("form-msg");
+
+const submitBtn =
+  document.getElementById("submit-btn");
+
+const googleBtn =
+  document.getElementById("google-btn");
+
+const nameInput =
+  document.getElementById("name");
+
+const phoneInput =
+  document.getElementById("phone");
+
+const emailInput =
+  document.getElementById("email");
+
+const consentInput =
+  document.getElementById("consent");
+
+
+/* ============================================================
+   URL PARAMETERS
+   ============================================================ */
+
+const params =
+  new URLSearchParams(
+    window.location.search
+  );
+
+const shopCode =
+  params.get("shop") || null;
+
+
+/* ============================================================
+   CURRENT ACTIVATION
+   ============================================================ */
+
+let currentActivationId = null;
+
+
+/* ============================================================
+   BACKGROUND VIDEO
+   ============================================================ */
+
+if (CONFIG.MEDIA_SRC) {
+
+  video.src =
+    CONFIG.MEDIA_SRC;
+
+} else {
+
+  video.style.background =
+    "#1C1A1D";
+
+}
+
+
+/* ============================================================
+   BASIC PAGE SETUP
+   ============================================================ */
+
+if (shopCode) {
+
+  shopTag.textContent =
+    `Location: ${shopCode}`;
+
+} else {
+
+  shopTag.textContent =
+    "General Campaign";
+
+}
+
+
+if (CONFIG.TERMS_URL) {
+
+  termsLink.href =
+    CONFIG.TERMS_URL;
+
+} else {
+
+  termsLink.addEventListener(
+    "click",
+    function(event) {
+
+      event.preventDefault();
+
+    }
+  );
+
+}
+
+
+/* ============================================================
+   MESSAGE HELPER
+
+   Technical errors are NOT shown to visitors.
+
+   They are logged to the browser console instead.
+   ============================================================ */
+
+function showMessage(
+  text,
+  type = "error"
+) {
+
+  msg.textContent =
+    text;
+
+  msg.className =
+    `msg ${type}`;
+
+}
+
+
+/* ============================================================
+   LOAD CAMPAIGN
+   ============================================================ */
+
+async function loadCampaign() {
+
+  /*
+   * Always show a usable page even if
+   * Supabase temporarily cannot be reached.
+   */
+
+  campaignName.textContent =
+    CONFIG.CAMPAIGN_NAME;
+
+
+  if (!supabaseClient) {
+
+    console.error(
+      "Supabase client unavailable."
+    );
+
+    return;
+
+  }
+
+
+  if (
+    !CONFIG.CAMPAIGN_ID ||
+    CONFIG.CAMPAIGN_ID ===
+    "YOUR_CAMPAIGN_ID"
+  ) {
+
+    console.error(
+      "Campaign ID is not configured."
+    );
+
+    return;
+
+  }
+
+
+  try {
+
+    /*
+     * Load active campaign
+     */
+
+    const {
+      data: campaign,
+      error: campaignError
+    } =
+      await supabaseClient
+        .from("campaigns")
+        .select(
+          "id,name,media_url,terms_url,active"
+        )
+        .eq(
+          "id",
+          CONFIG.CAMPAIGN_ID
+        )
+        .eq(
+          "active",
+          true
+        )
+        .maybeSingle();
+
+
+    if (campaignError) {
+
+      console.error(
+        "Campaign database error:",
+        campaignError
+      );
+
+      /*
+       * Do NOT show database errors
+       * to the public visitor.
+       */
+
+      return;
+
+    }
+
+
+    if (!campaign) {
+
+      console.warn(
+        "Campaign not found or inactive."
+      );
+
+      return;
+
+    }
+
+
+    /*
+     * Display campaign name
+     */
+
+    campaignName.textContent =
+      campaign.name ||
+      CONFIG.CAMPAIGN_NAME;
+
+
+    /*
+     * Database media URL overrides
+     * local config if available.
+     */
+
+    if (campaign.media_url) {
+
+      video.src =
+        campaign.media_url;
+
+    }
+
+
+    /*
+     * Database terms URL
+     */
+
+    if (campaign.terms_url) {
+
+      termsLink.href =
+        campaign.terms_url;
+
+    }
+
+
+    /* ========================================================
+       FIND ACTIVATION FROM QR SHOP CODE
+       ======================================================== */
+
+    /*
+     * IMPORTANT:
+     *
+     * If there is NO ?shop= parameter,
+     * we simply leave activation_id NULL.
+     *
+     * This is the General Campaign.
+     */
+
+    if (!shopCode) {
+
+      currentActivationId =
+        null;
+
+      shopTag.textContent =
+        "General Campaign";
+
+      return;
+
+    }
+
+
+    /*
+     * If a shop code exists, try to find it.
+     */
+
+    const {
+      data: activation,
+      error: activationError
+    } =
+      await supabaseClient
+        .from("activations")
+        .select(
+          "id,name,shop_code,venue_name"
+        )
+        .eq(
+          "campaign_id",
+          campaign.id
+        )
+        .eq(
+          "shop_code",
+          shopCode
+        )
+        .maybeSingle();
+
+
+    if (activationError) {
+
+      console.error(
+        "Activation lookup error:",
+        activationError
+      );
+
+      /*
+       * Do not block the campaign.
+       */
+
+      currentActivationId =
+        null;
+
+      return;
+
+    }
+
+
+    if (activation) {
+
+      currentActivationId =
+        activation.id;
+
+
+      if (activation.venue_name) {
+
+        shopTag.textContent =
+          `Location: ${activation.venue_name}`;
+
+      } else {
+
+        shopTag.textContent =
+          `Location: ${shopCode}`;
+
+      }
+
+    } else {
+
+      /*
+       * Unknown shop code.
+       *
+       * Do NOT block submission.
+       */
+
+      console.warn(
+        "Activation not found:",
+        shopCode
+      );
+
+      currentActivationId =
+        null;
+
+      shopTag.textContent =
+        `Location: ${shopCode}`;
+
+    }
+
+  } catch (error) {
+
+    /*
+     * Never expose raw technical errors
+     * to campaign visitors.
+     */
+
+    console.error(
+      "Campaign loading exception:",
+      error
+    );
+
+  }
+
+}
+
+
+/* ============================================================
+   GOOGLE SIGN-IN
+   ============================================================ */
+
+googleBtn.addEventListener(
+  "click",
+  async function() {
+
+    if (!supabaseClient) {
+
+      showMessage(
+        "Google sign-in is temporarily unavailable. You can enter manually.",
+        "error"
+      );
+
+      return;
+
+    }
+
+
+    googleBtn.disabled =
+      true;
+
+    showMessage(
+      "Opening Google sign-in...",
+      "success"
+    );
+
+
+    try {
+
+      const {
+        error
+      } =
+        await supabaseClient.auth.signInWithOAuth({
+
+          provider:
+            "google",
+
+          options: {
+
+            redirectTo:
+              window.location.href
+
+          }
+
+        });
+
+
+      if (error) {
+
+        throw error;
+
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Google login error:",
+        error
+      );
+
+      showMessage(
+        "Google sign-in is unavailable. You can enter your details manually.",
+        "error"
+      );
+
+      googleBtn.disabled =
+        false;
+
+    }
+
+  }
+);
+
+
+/* ============================================================
+   CHECK EXISTING GOOGLE SESSION
+   ============================================================ */
+
+async function loadAuthenticatedUser() {
+
+  if (!supabaseClient) {
+
+    return;
+
+  }
+
+
+  try {
+
+    const {
+      data: {
+        user
+      }
+    } =
+      await supabaseClient.auth.getUser();
+
+
+    if (!user) {
+
+      return;
+
+    }
+
+
+    /*
+     * Google normally provides these fields.
+     */
+
+    const metadata =
+      user.user_metadata ||
+      {};
+
+
+    if (
+      metadata.full_name &&
+      !nameInput.value
+    ) {
+
+      nameInput.value =
+        metadata.full_name;
+
+    } else if (
+      metadata.name &&
+      !nameInput.value
+    ) {
+
+      nameInput.value =
+        metadata.name;
+
+    }
+
+
+    if (
+      user.email &&
+      !emailInput.value
+    ) {
+
+      emailInput.value =
+        user.email;
+
+    }
+
+
+    googleBtn.textContent =
+      "✓ Google account connected";
+
+    googleBtn.disabled =
+      true;
+
+
+    showMessage(
+      "Google account connected. Enter your phone number and accept the terms.",
+      "success"
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Session check error:",
+      error
+    );
+
+  }
+
+}
+
+
+/* ============================================================
+   SUBMIT LEAD
+   ============================================================ */
+
+async function submitLead() {
+
+  const name =
+    nameInput.value.trim();
+
+  const phone =
+    phoneInput.value.trim();
+
+  const email =
+    emailInput.value.trim();
+
+
+  /* ----------------------------------------------------------
+     VALIDATION
+     ---------------------------------------------------------- */
+
+  if (!name) {
+
+    showMessage(
+      "Please enter your name.",
+      "error"
+    );
+
+    nameInput.focus();
+
+    return;
+
+  }
+
+
+  if (!/^[6-9][0-9]{9}$/.test(phone)) {
+
+    showMessage(
+      "Please enter a valid 10-digit mobile number.",
+      "error"
+    );
+
+    phoneInput.focus();
+
+    return;
+
+  }
+
+
+  if (
+    email &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  ) {
+
+    showMessage(
+      "Please enter a valid email address.",
+      "error"
+    );
+
+    emailInput.focus();
+
+    return;
+
+  }
+
+
+  if (!consentInput.checked) {
+
+    showMessage(
+      "Please accept the terms to continue.",
+      "error"
+    );
+
+    return;
+
+  }
+
+
+  if (!supabaseClient) {
+
+    console.error(
+      "Cannot submit lead: Supabase client unavailable."
+    );
+
+    showMessage(
+      "Unable to submit right now. Please try again.",
+      "error"
+    );
+
+    return;
+
+  }
+
+
+  /* ----------------------------------------------------------
+     CHECK GOOGLE AUTHENTICATION
+     ---------------------------------------------------------- */
+
+  let user =
+    null;
+
+  try {
+
+    const {
+      data: {
+        user: authenticatedUser
+      }
+    } =
+      await supabaseClient.auth.getUser();
+
+    user =
+      authenticatedUser;
+
+  } catch (error) {
+
+    console.warn(
+      "Could not check authentication:",
+      error
+    );
+
+  }
+
+
+  /* ----------------------------------------------------------
+     SUBMIT
+     ---------------------------------------------------------- */
+
+  submitBtn.disabled =
+    true;
+
+  googleBtn.disabled =
+    true;
+
+  showMessage(
+    "Submitting...",
+    "success"
+  );
+
+
+  try {
+
+    /*
+     * IMPORTANT:
+     *
+     * If the page has no ?shop= parameter,
+     * activation_id remains NULL.
+     *
+     * If the shop code is unknown,
+     * activation_id also remains NULL.
+     *
+     * The lead is therefore still attached
+     * to the general campaign.
+     */
+
+    const {
+      error
+    } =
+      await supabaseClient
+        .from("leads")
+        .insert({
+
+          campaign_id:
+            CONFIG.CAMPAIGN_ID,
+
+          activation_id:
+            currentActivationId,
+
+          name:
+            name,
+
+          phone:
+            phone,
+
+          email:
+            email || null,
+
+          verified_via:
+            user ? "google" : "manual",
+
+          consent_given:
+            true,
+
+          consent_at:
+            new Date().toISOString()
+
+        });
+
+
+    if (error) {
+
+      console.error(
+        "Lead submission error:",
+        error
+      );
+
+      throw error;
+
+    }
+
+
+    /*
+     * SUCCESS
+     */
+
+    showSuccess();
+
+
+  } catch (error) {
+
+    console.error(
+      "Lead submission exception:",
+      error
+    );
+
+    /*
+     * Show a user-friendly message,
+     * NOT the raw PostgreSQL error.
+     */
+
+    showMessage(
+      "Unable to submit right now. Please try again.",
+      "error"
+    );
+
+
+    submitBtn.disabled =
+      false;
+
+
+    if (
+      googleBtn.textContent !==
+      "✓ Google account connected"
+    ) {
+
+      googleBtn.disabled =
+        false;
+
+    }
+
+  }
+
+}
+
+
+/* ============================================================
+   FORM SUBMISSION
+   ============================================================ */
+
+form.addEventListener(
+  "submit",
+  async function(event) {
+
+    event.preventDefault();
+
+    await submitLead();
+
+  }
+);
+
+
+/* ============================================================
+   SUCCESS SCREEN
+   ============================================================ */
+
+function showSuccess() {
+
+  document.getElementById(
+    "form-card"
+  ).style.display =
+    "none";
+
+  document.getElementById(
+    "success-card"
+  ).style.display =
+    "block";
+
+}
+
+
+/* ============================================================
+   START
+   ============================================================ */
+
+async function initializePage() {
+
+  /*
+   * Start both operations.
+   */
+
+  await loadCampaign();
+
+  await loadAuthenticatedUser();
+
+}
+
+
+/*
+ * Start application
+ */
+
+initializePage();
+
+</script>
+
+</body>
+</html>
