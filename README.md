@@ -2,7 +2,7 @@
 
 Private operator console for the Honeybadger movie-campaign platform. It uses the **same Supabase project** as the main Honeybadger app and does not keep a second copy of movie, campaign, venue, event, or QR data.
 
-## Features
+## Features*
 
 - Admin-only sign-in through Supabase Auth and the `public.is_admin()` check.
 - Movie catalogue: title, language, release date, poster, trailer, notes, active status.
