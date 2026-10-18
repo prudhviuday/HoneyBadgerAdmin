@@ -15,7 +15,7 @@ const msg=(e:any)=>e?.message||String(e);
 function Field({label,children}:{label:string;children:any}){return <label className="field"><span>{label}</span>{children}</label>}
 function Actions({close,busy,label="Save changes"}:{close:()=>void;busy:boolean;label?:string}){return <div className="actions"><button type="button" className="secondary" onClick={close}>Cancel</button><button className="primary" disabled={busy}><Save size={15}/>{busy?"Saving…":label}</button></div>}
 export default function App(){
- const [db,SetDb]=useState<ReturnType<typeof createClient>|null>(null),[configLoading,SetConfigLoading]=useState(true);
+ const [db,SetDb]=useState<any>(null),[configLoading,SetConfigLoading]=useState(true);
  const [session,S]=useState<any>(null),[email,E]=useState(""),[password,P]=useState(""),[page,PageSet]=useState<Page>("Overview");
  const [busy,B]=useState(false),[error,Err]=useState(""),[notice,N]=useState(""),[search,Q]=useState(""),[modal,M]=useState(""),[editing,Ed]=useState<Row|null>(null);
  const [movies,Movies]=useState<Row[]>([]),[campaigns,Camps]=useState<Row[]>([]),[venues,Venues]=useState<Row[]>([]),[missions,Missions]=useState<Row[]>([]),[qrs,Qrs]=useState<Row[]>([]),[sources,Sources]=useState<Row[]>([]),[scans,Scans]=useState<Row[]>([]),[profiles,Profiles]=useState<Row[]>([]);
