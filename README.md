@@ -1,39 +1,29 @@
 # Honeybadger Admin
 
-Private operator console for the Honeybadger movie-campaign platform. It uses the **same Supabase project** as the main Honeybadger app and does not keep a second copy of movie, campaign, venue, event, or QR data.
+A clean, responsive admin console for the existing Honeybadger Supabase project. The admin UI reads and writes the existing database; it does not create a second database.
 
-## Features*
+## Deployment
 
-- Admin-only sign-in through Supabase Auth and the `public.is_admin()` check.
-- Movie catalogue: title, language, release date, poster, trailer, notes, active status.
-- Campaign management: link each campaign to a movie, set public media/terms URLs and active status.
-- Events and hunts: create/edit mission records, reward points/entries, target and date window.
-- Venue registry: shops, malls, colleges, cafes and theatres.
-- Universal QR manager: create and edit QR codes, link campaign/movie, attach a shop/mall or hunt, assign points, start/expiry dates, max uses, active state, and (for friend-invite QR) the Honeybadger user.
-- Public QR links use `https://honeycomb2.prudhvi123143.workers.dev/q/:code`.
+This project is deployed as a Cloudflare Worker with static assets. The Worker entrypoint is `worker/index.ts`; `wrangler.jsonc` configures the Worker, serves the Vite `dist` directory, and routes `/api/*` through the Worker before SPA fallback.
 
-## Configuration
+In the Cloudflare dashboard, open the `honeybadgeradmin` Worker and add these runtime variables under **Settings → Variables and Secrets**:
 
-For the deployed Cloudflare Worker, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Worker’s **Settings → Variables and Secrets**. The Worker entrypoint in `worker/index.ts` serves these public browser values at `/api/config` at runtime. Do not put a Supabase service-role key in these values. The deployment uses `wrangler.jsonc` to serve the built `dist` assets through the same Worker.
+- `VITE_SUPABASE_URL` — the existing Honeybadger Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` — the project's public anon/publishable key
 
-For local Vite development, create a `.env.local` file from `.env.example` and fill in the same two values. Cloudflare dashboard variables are not automatically available to a local development process.
+Redeploy the Worker after changing variables. Verify `/api/config` returns JSON with non-empty `url` and `anonKey` values. Those are public browser credentials; **never use a Supabase service-role or secret key**.
 
 ## Local development
 
-1. For local Vite development, create a `.env.local` file from `.env.example`.
-2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the same Supabase project used by Honeybadger.
-3. Install and run:
+For local Vite development only, copy `.env.example` to `.env.local`, fill in the same public Supabase values, then run:
 
-   ```sh
-   npm install
-   npm run dev
-   ```
+```sh
+npm install
+npm run dev
+```
 
-4. Sign in with an existing Supabase account that has the admin role. The client-side admin check is only a UI gate; the database RLS policies and admin-only RPCs remain the security boundary.
+## Access and security
 
-## Notes
+Sign in using an existing Supabase Auth account. The UI checks the `is_admin()` RPC before showing the admin console. This UI check is not a substitute for database security: enforce permissions using RLS policies and appropriately protected database functions.
 
-- Never put a Supabase service-role key in this frontend.
-- Creating promotion QR codes uses `create_promotion_qr`; friend-invite QR codes use the admin-only `admin_create_friend_invite_qr` RPC.
-- The admin app is a separate Worker from the public Honeybadger Worker. Deploy this project independently after setting the two public Supabase variables in the admin Worker settings.
-- Existing QR codes retain their public codes when edited. Regenerate artwork only if the encoded URL itself has changed.
+The console displays the existing movies, campaigns, missions, venues, and QR codes. New records can currently be added for movies, campaigns, and venues. The public QR landing pages remain on the main Honeybadger app at `https://honeycomb2.prudhvi123143.workers.dev/q/:code`.
