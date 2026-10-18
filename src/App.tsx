@@ -342,6 +342,30 @@ function UserActivityPanel({ db }: { db: SupabaseClient }) {
   }
 
   const pretty = (value: string | null | undefined) => (value || "Activity").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const locationEvents = (detail?.activities ?? []).filter(item => {
+    const meta = item.metadata ?? {};
+    return Number.isFinite(Number(meta.location_latitude)) &&
+      Number.isFinite(Number(meta.location_longitude)) &&
+      meta.location_latitude !== null && meta.location_latitude !== undefined &&
+      meta.location_longitude !== null && meta.location_longitude !== undefined;
+  }).reverse();
+  const latestLocation = locationEvents[locationEvents.length - 1];
+  const locationOf = (item: AdminUserActivity) => ({
+    lat: Number(item.metadata?.location_latitude),
+    lon: Number(item.metadata?.location_longitude),
+  });
+  const trackLats = locationEvents.map(item => locationOf(item).lat);
+  const trackLons = locationEvents.map(item => locationOf(item).lon);
+  const minLat = Math.min(...trackLats, 0), maxLat = Math.max(...trackLats, 0);
+  const minLon = Math.min(...trackLons, 0), maxLon = Math.max(...trackLons, 0);
+  const trackSvgPoints = locationEvents.map(item => {
+    const point = locationOf(item);
+    return {
+      id: item.id,
+      x: 20 + ((point.lon - minLon) / (maxLon - minLon || 0.00001)) * 260,
+      y: 20 + (1 - ((point.lat - minLat) / (maxLat - minLat || 0.00001))) * 120,
+    };
+  });
   const fieldClass = "admin-user-search-input";
 
   return <div className="user-activity-page">
@@ -363,6 +387,31 @@ function UserActivityPanel({ db }: { db: SupabaseClient }) {
       <div className="user-detail-head"><div><small>SELECTED USER</small><h2>{detail.user.display_name || "Unnamed user"}</h2><div className="user-contact">{detail.user.email && <span><Mail size={13}/>{detail.user.email}</span>}{detail.user.phone && <span><Phone size={13}/>{detail.user.phone}</span>}</div></div><button type="button" className="secondary" onClick={() => { const user = users.find(u => u.user_id === selectedUserId); if (user) void openUser(user); }}><RefreshCw size={13}/> Refresh</button></div>
       <div className="user-metrics"><div><small>Events loaded</small><b>{detail.activities.length}</b></div><div><small>Joined</small><b><AdminDate value={detail.user.created_at}/></b></div><div><small>Last active</small><b><AdminDate value={detail.user.last_active_at}/></b></div></div>
       <code className="user-uuid">{detail.user.user_id}</code>
+      <section className="user-location-section">
+        <div className="user-timeline-heading"><h3>Location history & track</h3><small>{locationEvents.length} activity location{locationEvents.length === 1 ? "" : "s"}</small></div>
+        {locationEvents.length === 0 ? <div className="user-empty">No GPS locations recorded. A user must enable location sharing in Honeycomb and grant browser location permission. Only activity-time locations are recorded; this is not background tracking.</div> : <>
+          {latestLocation && (() => {
+            const point = locationOf(latestLocation);
+            const bbox = [point.lon - 0.012, point.lat - 0.008, point.lon + 0.012, point.lat + 0.008].join("%2C");
+            const mapUrl = "https://www.openstreetmap.org/export/embed.html?bbox=" + bbox + "&layer=mapnik&marker=" + point.lat + "%2C" + point.lon;
+            return <div className="user-map-frame"><iframe title="Map of latest recorded activity location" src={mapUrl} loading="lazy" referrerPolicy="no-referrer" /><div className="user-map-caption">Latest recorded location · <AdminDate value={latestLocation.metadata?.location_recorded_at as string || latestLocation.created_at}/><a href={"https://www.openstreetmap.org/?mlat=" + point.lat + "&mlon=" + point.lon + "#map=16/" + point.lat + "/" + point.lon} target="_blank" rel="noreferrer">Open full map ↗</a></div></div>;
+          })()}
+          <div className="user-track-card">
+            <div className="user-track-card-head"><b>Recorded movement points</b><small>Oldest → newest · points come from logged activities</small></div>
+            {locationEvents.length > 1 && <svg className="user-track-plot" viewBox="0 0 300 160" role="img" aria-label="Relative movement between recorded activity locations">
+              <path d="M 20 20 V 140 H 280" fill="none" stroke="#393a42" strokeWidth="1"/>
+              <polyline points={trackSvgPoints.map(point => point.x + "," + point.y).join(" ")} fill="none" stroke="#ff9a62" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>
+              {trackSvgPoints.map((point,index) => <circle key={point.id} cx={point.x} cy={point.y} r={index === trackSvgPoints.length - 1 ? 5 : 3.5} fill={index === trackSvgPoints.length - 1 ? "#ff9a62" : "#eee"} stroke="#18191f" strokeWidth="1.5"><title>{"Point " + (index + 1)}</title></circle>)}
+            </svg>}
+            <ol className="user-track-list">{locationEvents.slice().reverse().map((item,index) => {
+              const point = locationOf(item);
+              const accuracy = item.metadata?.location_accuracy_m;
+              const locationUrl = "https://www.openstreetmap.org/?mlat=" + point.lat + "&mlon=" + point.lon + "#map=17/" + point.lat + "/" + point.lon;
+              return <li key={item.id}><span className="user-track-number">{locationEvents.length - index}</span><div><b>{pretty(item.event_description || item.event_type)}</b><small><AdminDate value={item.metadata?.location_recorded_at as string || item.created_at}/>{accuracy != null ? " · ±" + accuracy + " m accuracy" : ""}</small><code>{point.lat.toFixed(6)}, {point.lon.toFixed(6)}</code></div><a href={locationUrl} target="_blank" rel="noreferrer" aria-label="Open this location in OpenStreetMap">Map ↗</a></li>;
+            })}</ol>
+          </div>
+        </>}
+      </section>
       <div className="user-timeline-heading"><h3>Recent activity timeline</h3><small>Newest first · up to 150 events</small></div>
       {!detail.activities.length ? <div className="user-empty">No activity events have been recorded for this user yet.</div> : <ol className="user-timeline">{detail.activities.map(item => <li key={item.id}><span className="timeline-icon"><Activity size={15}/></span><div className="timeline-body"><div className="timeline-title-row"><b>{pretty(item.event_description || item.event_type)}</b><span><Clock3 size={12}/><AdminDate value={item.created_at}/></span></div><div className="timeline-tags">{item.campaign_name && <span>{item.campaign_name}</span>}{item.event_type_id != null && <span>Event #{item.event_type_id}</span>}{item.entity_type && <span>{pretty(item.entity_type)}</span>}{item.origin && <span>{item.origin}</span>}</div>{item.metadata && Object.keys(item.metadata).length > 0 && <details><summary>Event details</summary><pre>{JSON.stringify(item.metadata, null, 2)}</pre></details>}{item.entity_id && <code className="user-entity-id">Entity ID: {item.entity_id}</code>}</div></li>)}</ol>}
     </section>}
