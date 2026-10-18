@@ -16,3 +16,10 @@
 .qr-field-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.qr-fields .qr-active-toggle{display:flex;align-items:center;gap:9px;padding:12px;background:#202126;border:1px solid #35363e;border-radius:7px}.qr-active-toggle input{accent-color:var(--orange);width:15px;height:15px}.qr-fields .form-actions{margin-top:20px}
 @media(max-width:900px){.qr-editor-grid{grid-template-columns:1fr}.qr-preview{max-width:100%}.qr-image-wrap{width:200px;height:200px}}
 @media(max-width:560px){.qr-editor-head{padding:17px}.qr-editor-grid{padding:14px}.qr-field-row{grid-template-columns:1fr;gap:0}.qr-editor-head h2{font-size:19px}}
+
+/* Spreadsheet-style QR filters */
+.qr-filter-bar{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr)) auto;align-items:end;gap:12px;padding:15px;margin:0 0 14px;border:1px solid var(--line);border-radius:10px;background:#191a20}
+.qr-filter-title{grid-column:1/-1;display:flex;align-items:baseline;gap:10px}.qr-filter-title b{font:600 13px "Space Grotesk";color:#eee}.qr-filter-title span{font-size:11px;color:#858690}
+.qr-filter-bar label{display:grid;gap:6px;font-size:11px;color:#aaa}.qr-filter-bar select{width:100%;min-width:0;padding:10px;background:#101115;border:1px solid #383941;border-radius:7px;color:#eee;outline:none}.qr-filter-bar select:focus{border-color:var(--orange)}.qr-clear-filters{white-space:nowrap;padding:10px 12px}
+@media(max-width:900px){.qr-filter-bar{grid-template-columns:repeat(2,minmax(0,1fr))}.qr-clear-filters{width:100%}}
+@media(max-width:560px){.qr-filter-bar{grid-template-columns:1fr}.qr-filter-title{flex-direction:column;gap:4px}}
