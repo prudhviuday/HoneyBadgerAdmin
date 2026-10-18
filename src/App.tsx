@@ -50,7 +50,7 @@ export default function App() {
         if (!response.ok) throw new Error("Worker config endpoint returned HTTP " + response.status + ".");
         if (!type.includes("application/json")) throw new Error("The Worker is returning the website HTML for /api/config instead of JSON. Redeploy the Worker configuration.");
         const values = await response.json() as Config;
-        if (!values.url || !values.anonKey) throw new Error("The Worker endpoint works, but VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is empty in Worker Variables and Secrets.");
+        if (!values.url || !values.anonKey) throw new Error("The Worker endpoint works, but VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY (or the legacy VITE_SUPABASE_ANON_KEY) is empty in Worker Variables and Secrets.");
         if (!cancelled) { setConfig(values); setDb(createClient(values.url, values.anonKey)); }
       } catch (e: any) {
         if (!cancelled) setConfigError(e?.message || "Could not load Worker configuration.");
