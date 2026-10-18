@@ -12,9 +12,15 @@ Private operator console for the Honeybadger movie-campaign platform. It uses th
 - Universal QR manager: create and edit QR codes, link campaign/movie, attach a shop/mall or hunt, assign points, start/expiry dates, max uses, active state, and (for friend-invite QR) the Honeybadger user.
 - Public QR links use `https://honeycomb2.prudhvi123143.workers.dev/q/:code`.
 
+## Configuration
+
+For the deployed Cloudflare Pages app, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in **Settings → Variables and Secrets**. The app reads these through the `/api/config` Pages Function at runtime, rather than relying only on values embedded during the Vite build.
+
+For local Vite development, create a `.env.local` file from `.env.example` and fill in the same two values. Cloudflare dashboard variables are not automatically available to a local development process.
+
 ## Local development
 
-1. Create a `.env` file from `.env.example`.
+1. For local Vite development, create a `.env.local` file from `.env.example`.
 2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the same Supabase project used by Honeybadger.
 3. Install and run:
 
