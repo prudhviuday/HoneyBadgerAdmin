@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { Activity, Building2, Clapperboard, Film, LayoutDashboard, LogOut, Plus, QrCode, RefreshCw, CalendarDays, Search, ShieldCheck } from "lucide-react";
+import { Activity, Building2, Clapperboard, Film, LayoutDashboard, LogOut, Plus, QrCode, RefreshCw, CalendarDays, Search, ShieldCheck, Copy, ExternalLink, X, Save } from "lucide-react";
 import "./styles.css";
 
 type Config = { url?: string; anonKey?: string };
@@ -19,7 +19,7 @@ const columns: Record<string, string[]> = {
   Campaigns: ["name", "movie_id", "active"],
   "Events & Hunts": ["name", "mission_type", "reward_points", "is_active"],
   Venues: ["name", "venue_type", "city", "state", "active"],
-  "QR Manager": ["public_code", "purpose", "campaign_id", "is_active"],
+  "QR Manager": ["display_name", "public_code", "purpose", "campaign_name", "venue_name", "use_count", "is_active"],
 };
 const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
 
@@ -40,6 +40,8 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [draft, setDraft] = useState<RecordRow>({});
+  const [selectedQr, setSelectedQr] = useState<RecordRow | null>(null);
+  const [qrDraft, setQrDraft] = useState<RecordRow>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -87,8 +89,16 @@ export default function App() {
       const { data, error } = await client.from(s.table!).select("*").limit(500);
       return { name: s.name, data: data || [], error };
     }));
+    const [sourceResult, profileResult] = await Promise.all([
+      client.from("interaction_sources").select("id,name,source_type,points,reward_entries,campaign_id,is_active").limit(1000),
+      client.from("profiles").select("user_id,display_name").limit(1000),
+    ]);
     const next: Record<string, RecordRow[]> = {};
     results.forEach(r => { if (r.error) console.warn("Could not load " + r.name, r.error); next[r.name] = r.data; });
+    if (sourceResult.error) console.warn("Could not load QR interaction sources", sourceResult.error);
+    if (profileResult.error) console.warn("Could not load QR user profiles", profileResult.error);
+    next["QR Sources"] = sourceResult.data || [];
+    next["QR Profiles"] = profileResult.data || [];
     setRows(next);
   }
 
@@ -115,8 +125,72 @@ export default function App() {
     setBusy(false);
   }
 
-  const visibleRows = useMemo(() => (rows[section] || []).filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase())), [rows, section, search]);
+  const visibleRows = useMemo(() => {
+    const base = rows[section] || [];
+    if (section !== "QR Manager") return base.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
+    const sources = rows["QR Sources"] || [];
+    const profiles = rows["QR Profiles"] || [];
+    const campaigns = rows.Campaigns || [];
+    const venues = rows.Venues || [];
+    const hunts = rows["Events & Hunts"] || [];
+    return base.map(qr => {
+      const source = sources.find(item => item.id === qr.interaction_source_id);
+      const profile = profiles.find(item => item.user_id === qr.inviter_user_id);
+      const campaign = campaigns.find(item => item.id === qr.campaign_id);
+      const venue = venues.find(item => item.id === qr.venue_id);
+      const hunt = hunts.find(item => item.id === qr.hunt_id);
+      return { ...qr, display_name: qr.display_name || source?.name || "Unnamed QR", source_name: source?.name || "", source_type: source?.source_type || "", campaign_name: campaign?.name || qr.campaign_id, venue_name: venue?.name || "", inviter_name: profile?.display_name || "", hunt_name: hunt?.name || "" };
+    }).filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
+  }, [rows, section, search]);
   const total = (name: string) => (rows[name] || []).length;
+
+  function openQrEditor(row: RecordRow) {
+    const raw = (rows["QR Manager"] || []).find(item => item.id === row.id) || row;
+    setSelectedQr(raw);
+    setQrDraft({
+      ...raw,
+      display_name: raw.display_name || row.source_name || "",
+      max_uses: raw.max_uses == null ? "" : String(raw.max_uses),
+      starts_at: raw.starts_at ? String(raw.starts_at).slice(0, 16) : "",
+      expires_at: raw.expires_at ? String(raw.expires_at).slice(0, 16) : "",
+    });
+    setError("");
+    setNotice("");
+  }
+
+  async function saveQr(e: FormEvent) {
+    e.preventDefault();
+    if (!db || !selectedQr) return;
+    const name = String(qrDraft.display_name || "").trim();
+    if (!name) { setError("Give this QR a name so you can identify it later."); return; }
+    if (!qrDraft.campaign_id || !qrDraft.interaction_source_id) { setError("A campaign and interaction source are required for every QR."); return; }
+    const nullable = (value: any) => value === "" || value == null ? null : value;
+    const payload = {
+      display_name: name,
+      purpose: qrDraft.purpose,
+      qr_type: qrDraft.qr_type,
+      campaign_id: qrDraft.campaign_id,
+      interaction_source_id: qrDraft.interaction_source_id,
+      venue_id: nullable(qrDraft.venue_id),
+      inviter_user_id: nullable(qrDraft.inviter_user_id),
+      referral_code: nullable(qrDraft.referral_code),
+      hunt_id: nullable(qrDraft.hunt_id),
+      starts_at: nullable(qrDraft.starts_at) ? new Date(qrDraft.starts_at).toISOString() : null,
+      expires_at: nullable(qrDraft.expires_at) ? new Date(qrDraft.expires_at).toISOString() : null,
+      max_uses: nullable(qrDraft.max_uses) === null ? null : Number(qrDraft.max_uses),
+      is_active: qrDraft.is_active === true,
+    };
+    if (payload.max_uses !== null && (!Number.isInteger(payload.max_uses) || payload.max_uses < 1)) { setError("Maximum uses must be a positive whole number, or leave it blank for unlimited."); return; }
+    setBusy(true); setError(""); setNotice("");
+    const { error: saveError } = await db.from("qr_codes").update(payload).eq("id", selectedQr.id);
+    if (saveError) setError("Could not save QR: " + saveError.message);
+    else {
+      setNotice("QR details saved.");
+      setSelectedQr(null);
+      await loadData();
+    }
+    setBusy(false);
+  }
   if (loading) return <div className="center"><div className="loader"/><p>Connecting securely…</p></div>;
   if (configError || !db) return <div className="center"><div className="config-card"><div className="brand-icon"><Clapperboard/></div><p className="eyebrow">HONEYBADGER / ADMIN</p><h1>Configuration needs attention</h1><p>{configError || "Supabase client could not be created."}</p><div className="help"><b>Check Cloudflare Worker settings</b><span>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY under Settings → Variables and Secrets, then redeploy.</span><span>Test <code>/api/config</code>: it must return JSON with non-empty <code>url</code> and <code>anonKey</code> fields.</span></div><button className="button" onClick={() => location.reload()}><RefreshCw size={16}/> Retry</button></div></div>;
   if (!session || !isAdmin) return <div className="center"><form className="login-card" onSubmit={signIn}><div className="brand-icon"><Clapperboard/></div><p className="eyebrow">HONEYBADGER / CONTROL ROOM</p><h1>Admin sign in</h1><p>Sign in with an existing Supabase account that has administrator access.</p><label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label>{error && <div className="error">{error}</div>}<button className="button full" disabled={busy}>{busy ? "Checking…" : "Sign in securely"}</button><small><ShieldCheck size={14}/> Protected by Supabase Auth and admin-role verification</small></form></div>;
@@ -133,16 +207,35 @@ export default function App() {
         {section === "Venues" && <><label>Venue name<input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})}/></label><label>Type<select value={draft.venue_type || "shop"} onChange={e => setDraft({...draft,venue_type:e.target.value})}>{["shop","mall","college","cafe","theatre","other"].map(v=><option key={v}>{v}</option>)}</select></label><label>City<input value={draft.city || ""} onChange={e => setDraft({...draft,city:e.target.value})}/></label><label>State<input value={draft.state || ""} onChange={e => setDraft({...draft,state:e.target.value})}/></label><label>Address<input value={draft.address || ""} onChange={e => setDraft({...draft,address:e.target.value})}/></label></>}
         <div className="form-actions"><button type="button" className="secondary" onClick={() => setShowAdd(false)}>Cancel</button><button className="button" disabled={busy}>{busy ? "Saving…" : "Create record"}</button></div>
       </form>}
-      <div className="toolbar"><div className="search"><Search size={16}/><input placeholder={"Search " + section.toLowerCase()} value={search} onChange={e => setSearch(e.target.value)}/></div><span>{visibleRows.length} records</span></div>
-      <div className="panel"><DataTable rows={visibleRows} columns={columns[section] || []}/></div>
+      <div className="toolbar"><div className="search"><Search size={16}/><input placeholder={section === "QR Manager" ? "Search by QR name, code, venue, purpose…" : "Search " + section.toLowerCase()} value={search} onChange={e => setSearch(e.target.value)}/></div><span>{visibleRows.length} records</span></div>
+      {section === "QR Manager" && selectedQr && <form className="qr-editor" onSubmit={saveQr}>
+        <div className="qr-editor-head"><div><p className="eyebrow">QR DETAILS / EDIT MODE</p><h2>{qrDraft.display_name || "Unnamed QR"}</h2><p>Edit the label and scan rules. The public code itself stays unchanged so existing printed QR codes keep working.</p></div><button type="button" className="icon-button close-editor" title="Close editor" onClick={() => setSelectedQr(null)}><X size={18}/></button></div>
+        <div className="qr-editor-grid">
+          <section className="qr-preview"><div className="qr-image-wrap"><img alt={"QR code for " + (qrDraft.display_name || "QR")} src={"https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=10&data=" + encodeURIComponent("https://honeycomb2.prudhvi123143.workers.dev/q/" + (selectedQr.public_code || ""))}/></div><b>{qrDraft.display_name || "Unnamed QR"}</b><small className="mono">{selectedQr.public_code || "No public code"}</small><div className="qr-link-actions"><button type="button" className="secondary" onClick={() => { navigator.clipboard.writeText("https://honeycomb2.prudhvi123143.workers.dev/q/" + selectedQr.public_code); setNotice("QR link copied."); }}><Copy size={14}/> Copy link</button><a className="secondary link-button" href={"https://honeycomb2.prudhvi123143.workers.dev/q/" + encodeURIComponent(selectedQr.public_code || "")} target="_blank" rel="noreferrer"><ExternalLink size={14}/> Open link</a></div><small className="qr-url">https://honeycomb2.prudhvi123143.workers.dev/q/{selectedQr.public_code}</small><div className="qr-stats"><span>Scans / uses<b>{selectedQr.use_count || 0}</b></span><span>Created<b>{selectedQr.created_at ? new Date(selectedQr.created_at).toLocaleDateString() : "—"}</b></span></div></section>
+          <div className="qr-fields">
+            <label>QR display name<input required maxLength={120} placeholder="e.g. Sri Murugan Tea Stall – T. Nagar" value={qrDraft.display_name || ""} onChange={e => setQrDraft({...qrDraft,display_name:e.target.value})}/></label>
+            <div className="qr-field-row"><label>Purpose<select value={qrDraft.purpose || "general"} onChange={e => setQrDraft({...qrDraft,purpose:e.target.value})}>{[["vendor","Vendor / shop"],["mall","Mall"],["friend_invite","Friend invite"],["hunt_location","Hunt location"],["general","General"]].map(([v,t])=><option key={v} value={v}>{t}</option>)}</select></label><label>QR type<input value={qrDraft.qr_type || "generic"} onChange={e => setQrDraft({...qrDraft,qr_type:e.target.value})}/></label></div>
+            <label>Campaign<select required value={qrDraft.campaign_id || ""} onChange={e => setQrDraft({...qrDraft,campaign_id:e.target.value})}><option value="">Select campaign…</option>{(rows.Campaigns || []).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+            <label>Interaction source<select required value={qrDraft.interaction_source_id || ""} onChange={e => setQrDraft({...qrDraft,interaction_source_id:e.target.value})}><option value="">Select source…</option>{(rows["QR Sources"] || []).map(src=><option key={src.id} value={src.id}>{src.name} · {src.source_type} · {src.points} pts</option>)}</select></label>
+            <div className="qr-field-row"><label>Venue / shop / mall<select value={qrDraft.venue_id || ""} onChange={e => setQrDraft({...qrDraft,venue_id:e.target.value})}><option value="">No venue linked</option>{(rows.Venues || []).map(v=><option key={v.id} value={v.id}>{v.name}{v.city ? " — " + v.city : ""}</option>)}</select></label><label>Hunt / mission<select value={qrDraft.hunt_id || ""} onChange={e => setQrDraft({...qrDraft,hunt_id:e.target.value})}><option value="">No hunt linked</option>{(rows["Events & Hunts"] || []).map(h=><option key={h.id} value={h.id}>{h.name}</option>)}</select></label></div>
+            <label>Inviter user<select value={qrDraft.inviter_user_id || ""} onChange={e => setQrDraft({...qrDraft,inviter_user_id:e.target.value})}><option value="">No inviter linked</option>{(rows["QR Profiles"] || []).map(p=><option key={p.user_id} value={p.user_id}>{p.display_name || p.user_id}</option>)}</select></label>
+            <label>Referral code<input value={qrDraft.referral_code || ""} onChange={e => setQrDraft({...qrDraft,referral_code:e.target.value})} placeholder="Optional referral code"/></label>
+            <div className="qr-field-row"><label>Starts at<input type="datetime-local" value={qrDraft.starts_at || ""} onChange={e => setQrDraft({...qrDraft,starts_at:e.target.value})}/></label><label>Expires at<input type="datetime-local" value={qrDraft.expires_at || ""} onChange={e => setQrDraft({...qrDraft,expires_at:e.target.value})}/></label></div>
+            <label>Maximum uses <small>Leave blank for unlimited uses</small><input type="number" min="1" step="1" value={qrDraft.max_uses ?? ""} onChange={e => setQrDraft({...qrDraft,max_uses:e.target.value})} placeholder="Unlimited"/></label>
+            <label className="qr-active-toggle"><input type="checkbox" checked={qrDraft.is_active === true} onChange={e => setQrDraft({...qrDraft,is_active:e.target.checked})}/> QR is active and can be used</label>
+            <div className="form-actions"><button type="button" className="secondary" onClick={() => setSelectedQr(null)}>Cancel</button><button className="button" disabled={busy}><Save size={15}/>{busy ? "Saving…" : "Save QR changes"}</button></div>
+          </div>
+        </div>
+      </form>}
+      <div className="panel"><DataTable rows={visibleRows} columns={columns[section] || []} onRowClick={section === "QR Manager" ? openQrEditor : undefined}/></div>
       </>}
       <footer>HONEYBADGER ADMIN <span>Live data from Supabase</span></footer></div>
     </main>
   </div>;
 }
 
-function DataTable({rows, columns = []}: {rows: RecordRow[]; columns?: string[]}) {
+function DataTable({rows, columns = [], onRowClick}: {rows: RecordRow[]; columns?: string[]; onRowClick?: (row: RecordRow) => void}) {
   if (!rows.length) return <div className="empty">No records found.</div>;
   const keys = columns.length ? columns : Object.keys(rows[0]).filter(k => !["id","created_at","updated_at","metadata"].includes(k)).slice(0,5);
-  return <div className="table-scroll"><table><thead><tr>{keys.map(k=><th key={k}>{label(k)}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.id || i}>{keys.map(k=><td key={k}>{typeof r[k] === "boolean" ? <span className={r[k] ? "badge yes" : "badge"}>{r[k] ? "Active" : "Inactive"}</span> : r[k] == null || r[k] === "" ? "—" : String(r[k]).length > 70 ? String(r[k]).slice(0,67)+"…" : String(r[k])}</td>)}</tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr>{keys.map(k=><th key={k}>{label(k)}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.id || i} className={onRowClick ? "clickable-row" : undefined} onClick={onRowClick ? () => onRowClick(r) : undefined} title={onRowClick ? "Click to view and edit QR details" : undefined}>{keys.map(k=><td key={k}>{typeof r[k] === "boolean" ? <span className={r[k] ? "badge yes" : "badge"}>{r[k] ? "Active" : "Inactive"}</span> : r[k] == null || r[k] === "" ? "—" : String(r[k]).length > 70 ? String(r[k]).slice(0,67)+"…" : String(r[k])}</td>)}</tr>)}</tbody></table></div>;
 }
