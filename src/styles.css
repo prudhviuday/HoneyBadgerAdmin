@@ -85,3 +85,51 @@
 @media(max-width:650px){.user-map-frame iframe{height:240px}.user-map-caption{flex-direction:column}.user-track-card{padding:11px}}
 
 .user-track-map{display:block;width:100%;height:auto;aspect-ratio:3/2;background:#e5e4df}
+
+
+/* Activity category registry, task builder and activity audit */
+.activity-task-page{max-width:1500px}
+.activity-task-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:18px 0}
+.activity-task-metrics>div{display:grid;gap:10px;padding:17px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.activity-task-metrics small{color:#92939d;font-size:11px}
+.activity-task-metrics b{font:600 26px 'Space Grotesk';color:#f2f1ef}
+.activity-task-warning{display:flex;align-items:flex-start;gap:10px;padding:13px 15px;margin:15px 0;border:1px solid #6d4b2b;border-radius:8px;background:#292018;color:#f0c49e;line-height:1.6}
+.activity-task-warning svg{flex:none;margin-top:2px}
+.activity-task-grid{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:16px;margin:16px 0}
+.activity-task-grid-bottom{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
+.activity-task-form{display:grid;align-content:start;gap:12px}
+.activity-task-form h3,.activity-task-section-heading h3{display:flex;align-items:center;gap:8px;margin:0;font:600 15px 'Space Grotesk';color:#f2f1ef}
+.activity-task-form h3 svg,.activity-task-section-heading h3 svg{color:var(--orange)}
+.activity-task-form>label{display:grid;gap:7px;color:#bcbcc4;font-size:12px}
+.activity-task-form input:not([type=checkbox]),.activity-task-form select,.activity-task-form textarea{width:100%;min-width:0;padding:11px 12px;background:#101115;border:1px solid #383941;border-radius:7px;color:#eee;outline:none;resize:vertical}
+.activity-task-form input:focus,.activity-task-form select:focus,.activity-task-form textarea:focus{border-color:var(--orange)}
+.activity-task-form input[type=checkbox]{accent-color:var(--orange)}
+.activity-task-form .activity-task-check{display:flex;align-items:center;gap:8px}
+.activity-task-help{display:block;color:#858690;font-size:10px;line-height:1.6}
+.activity-task-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.activity-task-section-heading p{margin:6px 0 0;color:#858690;font-size:11px;line-height:1.5}
+.activity-category-list,.activity-task-list{display:grid;gap:8px;max-height:530px;overflow:auto}
+.activity-category-row{display:flex;align-items:flex-start;gap:11px;padding:12px;border:1px solid #2c2d34;border-radius:8px;background:#141519}
+.activity-category-row>b{display:grid;place-items:center;min-width:34px;padding:6px;border-radius:6px;background:#35231b;color:#ffad7d;font:600 12px 'DM Mono'}
+.activity-category-row>div{display:grid;gap:5px;min-width:0;flex:1}
+.activity-category-row strong{font:11px 'DM Mono';overflow-wrap:anywhere;color:#f2f1ef}
+.activity-category-row small{color:#92939d;font-size:11px;line-height:1.5}
+.activity-category-row>.badge{flex:none}
+.activity-task-field-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.activity-task-field-row label{display:grid;gap:7px;color:#bcbcc4;font-size:11px}
+.activity-task-field-row input{width:100%;min-width:0;padding:10px;background:#101115;border:1px solid #383941;border-radius:7px;color:#eee}
+.activity-task-card{padding:14px;border:1px solid #303139;border-radius:9px;background:#141519}
+.activity-task-card-top,.activity-task-card-bottom{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.activity-task-card-top>div{display:grid;gap:6px;min-width:0}
+.activity-task-card-top strong{font-size:12px;overflow-wrap:anywhere;color:#f2f1ef}
+.activity-task-card-top small{color:#92939d;font-size:10px;line-height:1.5}
+.activity-task-card-bottom{align-items:center;margin-top:13px;padding-top:11px;border-top:1px solid #2b2c33}
+.activity-task-card-bottom>span{color:#92939d;font-size:10px;line-height:1.7}
+.activity-task-card-bottom b{color:#f2f1ef}
+.activity-log-panel{margin-top:18px}
+.activity-log-actions{display:flex;align-items:center;gap:8px;color:#92939d;font-size:11px}
+.activity-log-search{margin:0 0 12px;max-width:480px}
+.activity-log-search input{font-size:11px}
+.activity-log-panel td code{font:10px 'DM Mono';color:#b4b5be}
+@media(max-width:1000px){.activity-task-grid,.activity-task-grid-bottom{grid-template-columns:1fr}.activity-task-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.activity-task-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.activity-task-metrics>div{padding:12px}.activity-task-metrics b{font-size:22px}.activity-task-field-row{grid-template-columns:1fr}.activity-task-card-top,.activity-task-card-bottom{align-items:flex-start;flex-direction:column}.activity-task-section-heading{align-items:flex-start}.activity-category-row{flex-wrap:wrap}.activity-category-row>.badge{margin-left:45px}}
