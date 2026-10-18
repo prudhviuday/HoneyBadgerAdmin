@@ -135,7 +135,7 @@ export default function App() {
     const campaigns = rows.Campaigns || [];
     const venues = rows.Venues || [];
     const hunts = rows["Events & Hunts"] || [];
-    return base.map(qr => {
+    return base.map((qr): RecordRow => {
       const source = sources.find(item => item.id === qr.interaction_source_id);
       const profile = profiles.find(item => item.user_id === qr.inviter_user_id);
       const campaign = campaigns.find(item => item.id === qr.campaign_id);
