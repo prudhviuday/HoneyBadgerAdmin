@@ -191,14 +191,20 @@ export default function App() {
     };
     if (payload.max_uses !== null && (!Number.isInteger(payload.max_uses) || payload.max_uses < 1)) { setError("Maximum uses must be a positive whole number, or leave it blank for unlimited."); return; }
     setBusy(true); setError(""); setNotice("");
-    const { error: saveError } = await db.from("qr_codes").update(payload).eq("id", selectedQr.id);
-    if (saveError) setError("Could not save QR: " + saveError.message);
-    else {
-      setNotice("QR details saved.");
-      setSelectedQr(null);
-      await loadData();
+    try {
+      const { data: savedRows, error: saveError } = await db.from("qr_codes").update(payload).eq("id", selectedQr.id).select("id");
+      if (saveError) setError("Could not save QR: " + saveError.message);
+      else if (!savedRows || savedRows.length === 0) setError("No QR record was updated. Your admin session may have expired, or the database policy blocked this change. Refresh the page and sign in again.");
+      else {
+        setNotice("QR details saved successfully.");
+        setSelectedQr(null);
+        await loadData();
+      }
+    } catch (e: any) {
+      setError("Could not save QR: " + (e?.message || "Unexpected error."));
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
   if (loading) return <div className="center"><div className="loader"/><p>Connecting securely…</p></div>;
   if (configError || !db) return <div className="center"><div className="config-card"><div className="brand-icon"><Clapperboard/></div><p className="eyebrow">HONEYBADGER / ADMIN</p><h1>Configuration needs attention</h1><p>{configError || "Supabase client could not be created."}</p><div className="help"><b>Check Cloudflare Worker settings</b><span>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY under Settings → Variables and Secrets, then redeploy.</span><span>Test <code>/api/config</code>: it must return JSON with non-empty <code>url</code> and <code>anonKey</code> fields.</span></div><button className="button" onClick={() => location.reload()}><RefreshCw size={16}/> Retry</button></div></div>;
