@@ -83,3 +83,5 @@
 .user-track-list li>div small{font-size:10px;color:#92939d}
 .user-track-list li>div code{font:10px 'DM Mono';color:#aaa;overflow-wrap:anywhere}
 @media(max-width:650px){.user-map-frame iframe{height:240px}.user-map-caption{flex-direction:column}.user-track-card{padding:11px}}
+
+.user-track-map{display:block;width:100%;height:auto;aspect-ratio:3/2;background:#e5e4df}
