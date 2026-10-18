@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Activity, Building2, Clapperboard, Film, LayoutDashboard, LogOut, Plus, QrCode, RefreshCw, CalendarDays, Search, ShieldCheck } from "lucide-react";
 import "./styles.css";
@@ -92,7 +92,7 @@ export default function App() {
     setRows(next);
   }
 
-  async function signIn(e: React.FormEvent) {
+  async function signIn(e: FormEvent) {
     e.preventDefault(); if (!db) return;
     setBusy(true); setError("");
     const { error } = await db.auth.signInWithPassword({ email, password });
@@ -100,7 +100,7 @@ export default function App() {
     setBusy(false);
   }
 
-  async function addRecord(e: React.FormEvent) {
+  async function addRecord(e: FormEvent) {
     e.preventDefault(); if (!db) return;
     const table = sections.find(s => s.name === section)?.table;
     if (!table || !["Movies", "Campaigns", "Venues"].includes(section)) return;
