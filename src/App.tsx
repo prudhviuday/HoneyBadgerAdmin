@@ -356,8 +356,8 @@ function UserActivityPanel({ db }: { db: SupabaseClient }) {
   });
   const trackLats = locationEvents.map(item => locationOf(item).lat);
   const trackLons = locationEvents.map(item => locationOf(item).lon);
-  const minLat = Math.min(...trackLats, 0), maxLat = Math.max(...trackLats, 0);
-  const minLon = Math.min(...trackLons, 0), maxLon = Math.max(...trackLons, 0);
+  const minLat = Math.min(...trackLats), maxLat = Math.max(...trackLats);
+  const minLon = Math.min(...trackLons), maxLon = Math.max(...trackLons);
   const trackSvgPoints = locationEvents.map(item => {
     const point = locationOf(item);
     return {
