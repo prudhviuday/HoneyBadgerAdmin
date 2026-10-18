@@ -2,6 +2,7 @@ interface Env {
   ASSETS: Fetcher;
   VITE_SUPABASE_URL?: string;
   VITE_SUPABASE_ANON_KEY?: string;
+  VITE_SUPABASE_PUBLISHABLE_KEY?: string;
 }
 
 export default {
@@ -13,7 +14,7 @@ export default {
       return Response.json(
         {
           url: env.VITE_SUPABASE_URL ?? "",
-          anonKey: env.VITE_SUPABASE_ANON_KEY ?? "",
+          anonKey: env.VITE_SUPABASE_PUBLISHABLE_KEY ?? env.VITE_SUPABASE_ANON_KEY ?? "",
         },
         {
           headers: {
