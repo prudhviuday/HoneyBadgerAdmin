@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    />
+
+    <title>Honeybadger Media — Admin Dashboard</title>
+
+    <link
+        rel="stylesheet"
+        href="css/admin.css"
+    />
+</head>
+
+
+<body>
+
+<div class="app">
+
+
+    <!-- =====================================================
+         SIDEBAR
+         ===================================================== -->
+
+    <aside
+        class="sidebar"
+        id="sidebar"
+    >
+
+        <div class="brand">
+
+            <img
+                src="assets/badger-logo.svg"
+                alt="Honeybadger Media"
+                class="brand-logo"
+            />
+
+            <div class="brand-name">
+                HONEYBADGER
+            </div>
+
+            <div class="brand-subtitle">
+                Media · Admin
+            </div>
+
+        </div>
+
+
+        <nav class="navigation">
+
+
+            <!-- OVERVIEW -->
+
+            <div class="nav-section">
+
+                <div class="nav-title">
+                    Overview
+                </div>
+
+
+                <a
+                    class="nav-link active"
+                    href="#dashboard"
+                    data-route="dashboard"
+                >
+                    <span class="nav-icon">⌂</span>
+                    Dashboard
+                </a>
+
+            </div>
+
+
+
+            <!-- CAMPAIGN MANAGEMENT -->
+
+            <div class="nav-section">
+
+                <div class="nav-title">
+                    Campaign Management
+                </div>
+
+
+                <a
+                    class="nav-link"
+                    href="#clients"
+                    data-route="clients"
+                >
+                    <span class="nav-icon">◉</span>
+                    Clients
+                </a>
+
+
+                <a
+                    class="nav-link"
+                    href="#movies"
+                    data-route="movies"
+                >
+                    <span class="nav-icon">▶</span>
+                    Movies
+                </a>
+
+
+                <a
+                    class="nav-link"
+                    href="#campaigns"
+                    data-route="campaigns"
+                >
+                    <span class="nav-icon">◆</span>
+                    Campaigns
+                </a>
+
+
+                <a
+                    class="nav-link"
+                    href="#venues"
+                    data-route="venues"
+                >
+                    <span class="nav-icon">⌖</span>
+                    Venues
+                </a>
+
+
+                <a
+                    class="nav-link"
+                    href="#activations"
+                    data-route="activations"
+                >
+                    <span class="nav-icon">▣</span>
+                    Activations
+                </a>
+
+            </div>
+
+
+
+            <!-- OPERATIONS -->
+
+            <div class="nav-section">
+
+                <div class="nav-title">
+                    Operations
+                </div>
+
+
+                <a
+                    class="nav-link"
+                    href="#leads"
+                    data-route="leads"
+                >
+                    <span class="nav-icon">☷</span>
+                    Leads
+                </a>
+
+
+                <a
+                    class="nav-link"
+                    href="#expenses"
+                    data-route="expenses"
+                >
+                    <span class="nav-icon">₹</span>
+                    Expenses
+                </a>
+
+
+                <a
+                    class="nav-link"
+                    href="#invoices"
+                    data-route="invoices"
+                >
+                    <span class="nav-icon">▤</span>
+                    Invoices
+                </a>
+
+
+                <a
+                    class="nav-link"
+                    href="#reports"
+                    data-route="reports"
+                >
+                    <span class="nav-icon">▥</span>
+                    Reports
+                </a>
+
+            </div>
+
+        </nav>
+
+
+        <!-- SIDEBAR FOOTER -->
+
+        <div class="sidebar-footer">
+
+            <button
+                class="logout-button"
+                id="logoutButton"
+                type="button"
+            >
+                Sign out
+            </button>
+
+        </div>
+
+    </aside>
+
+
+
+    <!-- =====================================================
+         MAIN
+         ===================================================== -->
+
+    <main class="main">
+
+
+        <!-- TOPBAR -->
+
+        <header class="topbar">
+
+            <div class="topbar-left">
+
+
+                <button
+                    class="mobile-menu"
+                    id="mobileMenu"
+                    type="button"
+                    aria-label="Open menu"
+                >
+                    ☰
+                </button>
+
+
+                <div>
+
+                    <div
+                        class="page-title"
+                        id="topbarPageTitle"
+                    >
+                        Dashboard
+                    </div>
+
+
+                    <div
+                        class="page-subtitle"
+                        id="topbarPageSubtitle"
+                    >
+                        Honeybadger Media administration
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- USER -->
+
+            <div class="user-area">
+
+                <span
+                    class="user-email"
+                    id="userEmail"
+                >
+                    Loading...
+                </span>
+
+
+                <div
+                    class="avatar"
+                    id="avatar"
+                >
+                    ?
+                </div>
+
+            </div>
+
+        </header>
+
+
+
+        <!-- =================================================
+             DYNAMIC PAGE CONTENT
+
+             Every page is rendered here by app.js:
+
+             dashboard.js
+             clients.js
+             movies.js
+             campaigns.js
+             venues.js
+             activations.js
+             leads.js
+             expenses.js
+             invoices.js
+             reports.js
+             ================================================= -->
+
+        <section
+            class="content"
+            id="content"
+        >
+
+            <div class="loading">
+                Loading...
+            </div>
+
+        </section>
+
+
+    </main>
+
+</div>
+
+
+
+<!-- =========================================================
+     APPLICATION JAVASCRIPT
+     ========================================================= -->
+
+<script
+    type="module"
+    src="./js/app.js"
+></script>
+
+
+</body>
+</html>

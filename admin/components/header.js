@@ -1,0 +1,1 @@
+export function mountHeader(title, subtitle='') { const el=document.getElementById('header'); if(!el)return; el.innerHTML=`<div><h1>${title}</h1>${subtitle?`<p>${subtitle}</p>`:''}</div><div class="header-user"><div class="avatar" data-avatar>A</div><span data-user-email>Admin</span></div>`; }

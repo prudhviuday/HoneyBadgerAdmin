@@ -1,0 +1,4 @@
+export const input=(name,label,type='text',value='',required=false,extra='')=>`<label class="field"><span>${label}${required?' *':''}</span><input name="${name}" type="${type}" value="${String(value??'').replace(/"/g,'&quot;')}" ${required?'required':''} ${extra}></label>`;
+export const textarea=(name,label,value='',extra='')=>`<label class="field"><span>${label}</span><textarea name="${name}" ${extra}>${value??''}</textarea></label>`;
+export const select=(name,label,options,value='',required=false)=>`<label class="field"><span>${label}${required?' *':''}</span><select name="${name}" ${required?'required':''}><option value="">Select…</option>${options.map(o=>`<option value="${o.value}" ${o.value===value?'selected':''}>${o.label}</option>`).join('')}</select></label>`;
+export const checkbox=(name,label,checked=true)=>`<label class="check"><input name="${name}" type="checkbox" ${checked?'checked':''}> <span>${label}</span></label>`;

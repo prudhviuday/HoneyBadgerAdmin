@@ -1,0 +1,1 @@
+export function setLoading(el, loading, text='Loading…'){ if(!el)return; el.disabled=loading; if(loading){el.dataset.originalText=el.textContent;el.textContent=text;}else if(el.dataset.originalText){el.textContent=el.dataset.originalText;} }

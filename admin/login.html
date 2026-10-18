@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Honeybadger Media — Admin Login</title>
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.06), transparent 30%),
+        radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.04), transparent 30%),
+        #090909;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 430px;
+    }
+
+    .brand {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .brand-name {
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+
+    .brand-subtitle {
+      margin-top: 7px;
+      font-size: 12px;
+      color: #888;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .card {
+      background: rgba(20, 20, 20, 0.94);
+      border: 1px solid #292929;
+      border-radius: 18px;
+      padding: 34px;
+      box-shadow: 0 25px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    .heading {
+      font-size: 25px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .description {
+      color: #888;
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 28px;
+    }
+
+    .field {
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #bbb;
+      margin-bottom: 8px;
+    }
+
+    input {
+      width: 100%;
+      height: 48px;
+      padding: 0 14px;
+      border-radius: 9px;
+      border: 1px solid #333;
+      background: #0d0d0d;
+      color: #fff;
+      outline: none;
+      font-size: 15px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus {
+      border-color: #777;
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+    }
+
+    input::placeholder {
+      color: #555;
+    }
+
+    .login-button {
+      width: 100%;
+      height: 50px;
+      border: none;
+      border-radius: 9px;
+      background: #ffffff;
+      color: #080808;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-top: 4px;
+    }
+
+    .login-button:hover {
+      opacity: 0.9;
+    }
+
+    .login-button:active {
+      transform: scale(0.99);
+    }
+
+    .login-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .message {
+      display: none;
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .message.error {
+      display: block;
+      background: rgba(180, 40, 40, 0.12);
+      border: 1px solid rgba(220, 80, 80, 0.25);
+      color: #ff9b9b;
+    }
+
+    .message.success {
+      display: block;
+      background: rgba(50, 160, 90, 0.12);
+      border: 1px solid rgba(70, 180, 110, 0.25);
+      color: #8fe0aa;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 22px;
+      color: #555;
+      font-size: 11px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(0, 0, 0, 0.25);
+      border-top-color: #000;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: -2px;
+      margin-right: 7px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        padding: 26px 22px;
+      }
+
+      .brand-name {
+        font-size: 27px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="page">
+
+    <div class="brand">
+      <div class="brand-name">HONEYBADGER</div>
+      <div class="brand-subtitle">Media · Admin</div>
+    </div>
+
+    <section class="card">
+
+      <h1 class="heading">Welcome back</h1>
+
+      <p class="description">
+        Sign in to manage campaigns, activations, leads and reports.
+      </p>
+
+      <form id="loginForm">
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            placeholder="admin@example.com"
+            autocomplete="email"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input
+            id="password"
+            type="password"
+            placeholder="Enter your password"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+
+        <button
+          id="loginButton"
+          class="login-button"
+          type="submit"
+        >
+          Sign in
+        </button>
+
+      </form>
+
+      <div id="message" class="message"></div>
+
+    </section>
+
+    <div class="footer">
+      Honeybadger Media · Internal Administration
+    </div>
+
+  </main>
+
+
+  <script>
+    /* =========================================================
+       SUPABASE CONFIGURATION
+       ========================================================= */
+
+    const SUPABASE_URL =
+      "https://vorvkmklptldvgecfyso.supabase.co";
+
+    /*
+      This is the PUBLIC/PUBLISHABLE key.
+
+      NEVER put the Supabase service_role/secret key here.
+    */
+    const SUPABASE_PUBLISHABLE_KEY =
+      "sb_publishable_8rl5-39n-iAwaTD5QEIGng_GYbZjFvN";
+
+
+    const supabaseClient = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_PUBLISHABLE_KEY
+    );
+
+
+    /* =========================================================
+       ELEMENTS
+       ========================================================= */
+
+    const loginForm = document.getElementById("loginForm");
+    const loginButton = document.getElementById("loginButton");
+    const message = document.getElementById("message");
+
+
+    /* =========================================================
+       MESSAGE HELPER
+       ========================================================= */
+
+    function showMessage(text, type = "error") {
+      message.textContent = text;
+      message.className = "message " + type;
+    }
+
+    function clearMessage() {
+      message.textContent = "";
+      message.className = "message";
+    }
+
+
+    /* =========================================================
+       CHECK EXISTING SESSION
+       ========================================================= */
+
+    async function checkExistingSession() {
+
+      const {
+        data: { session }
+      } = await supabaseClient.auth.getSession();
+
+      if (session) {
+        window.location.href = "index.html";
+      }
+    }
+
+    checkExistingSession();
+
+
+    /* =========================================================
+       LOGIN
+       ========================================================= */
+
+    loginForm.addEventListener("submit", async function (event) {
+
+      event.preventDefault();
+
+      clearMessage();
+
+      const email =
+        document.getElementById("email").value.trim();
+
+      const password =
+        document.getElementById("password").value;
+
+
+      if (!email || !password) {
+        showMessage("Please enter your email and password.");
+        return;
+      }
+
+
+      loginButton.disabled = true;
+
+      loginButton.innerHTML =
+        '<span class="spinner"></span>Signing in...';
+
+
+      try {
+
+        const {
+          data,
+          error
+        } = await supabaseClient.auth.signInWithPassword({
+          email: email,
+          password: password
+        });
+
+
+        if (error) {
+          console.error("Supabase login error:", error);
+
+          showMessage(
+            "Login failed. Please check your email and password."
+          );
+
+          return;
+        }
+
+
+        if (!data.session) {
+          showMessage(
+            "Login could not be completed. Please try again."
+          );
+
+          return;
+        }
+
+
+        showMessage(
+          "Login successful. Opening dashboard...",
+          "success"
+        );
+
+
+        /*
+          Small delay so the user can see the success message.
+        */
+        setTimeout(function () {
+          window.location.href = "index.html";
+        }, 500);
+
+
+      } catch (error) {
+
+        console.error("Unexpected login error:", error);
+
+        showMessage(
+          "Something went wrong. Please try again."
+        );
+
+      } finally {
+
+        loginButton.disabled = false;
+
+        loginButton.textContent = "Sign in";
+      }
+
+    });
+
+  </script>
+
+</body>
+</html>
+
