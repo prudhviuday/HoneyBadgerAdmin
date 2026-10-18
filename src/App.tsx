@@ -144,10 +144,10 @@ export default function App() {
       return { ...qr, display_name: qr.display_name || source?.name || "Unnamed QR", source_name: source?.name || "", source_type: source?.source_type || "", campaign_name: campaign?.name || qr.campaign_id, venue_name: venue?.name || "", inviter_name: profile?.display_name || "", hunt_name: hunt?.name || "" };
     }).filter(row => {
       if (!JSON.stringify(row).toLowerCase().includes(search.toLowerCase())) return false;
-      if (qrFilters.purpose && row.purpose !== qrFilters.purpose) return false;
-      if (qrFilters.campaign_id && row.campaign_id !== qrFilters.campaign_id) return false;
-      if (qrFilters.venue_id && row.venue_id !== qrFilters.venue_id) return false;
-      if (qrFilters.is_active !== "" && String(row.is_active) !== qrFilters.is_active) return false;
+      if (qrFilters.purpose && String(row.purpose ?? "") !== qrFilters.purpose) return false;
+      if (qrFilters.campaign_id && (qrFilters.campaign_id === "__unassigned__" ? row.campaign_id != null : String(row.campaign_id ?? "") !== qrFilters.campaign_id)) return false;
+      if (qrFilters.venue_id && (qrFilters.venue_id === "__unassigned__" ? row.venue_id != null : String(row.venue_id ?? "") !== qrFilters.venue_id)) return false;
+      if (qrFilters.is_active !== "" && String(row.is_active ?? "") !== qrFilters.is_active) return false;
       return true;
     });
   }, [rows, section, search, qrFilters]);
@@ -245,8 +245,8 @@ export default function App() {
       {section === "QR Manager" && <div className="qr-filter-bar" aria-label="Filter QR codes">
         <div className="qr-filter-title"><b>Filter QR codes</b><span>Combine filters like a spreadsheet</span></div>
         <label>Purpose<select value={qrFilters.purpose} onChange={e => setQrFilters({...qrFilters,purpose:e.target.value})}><option value="">All purposes</option>{Array.from(new Set((rows["QR Manager"] || []).map(q => q.purpose).filter(Boolean))).sort().map(v => <option key={v} value={v}>{label(v)}</option>)}</select></label>
-        <label>Campaign<select value={qrFilters.campaign_id} onChange={e => setQrFilters({...qrFilters,campaign_id:e.target.value})}><option value="">All campaigns</option>{(rows.Campaigns || []).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
-        <label>Venue<select value={qrFilters.venue_id} onChange={e => setQrFilters({...qrFilters,venue_id:e.target.value})}><option value="">All venues</option>{(rows.Venues || []).map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></label>
+        <label>Campaign<select value={qrFilters.campaign_id} onChange={e => setQrFilters({...qrFilters,campaign_id:e.target.value})}><option value="">All campaigns</option>{Array.from(new Set((rows["QR Manager"] || []).map(q => q.campaign_id).filter(Boolean).map(String))).map(id => { const campaign = (rows.Campaigns || []).find(v => String(v.id) === id); return <option key={id} value={id}>{campaign?.name || id}</option>; })}{(rows["QR Manager"] || []).some(q => !q.campaign_id) && <option value="__unassigned__">Unassigned campaign</option>}</select></label>
+        <label>Venue<select value={qrFilters.venue_id} onChange={e => setQrFilters({...qrFilters,venue_id:e.target.value})}><option value="">All venues</option>{Array.from(new Set((rows["QR Manager"] || []).map(q => q.venue_id).filter(Boolean).map(String))).map(id => { const venue = (rows.Venues || []).find(v => String(v.id) === id); return <option key={id} value={id}>{venue?.name || id}</option>; })}{(rows["QR Manager"] || []).some(q => !q.venue_id) && <option value="__unassigned__">Unassigned venue</option>}</select></label>
         <label>Status<select value={qrFilters.is_active} onChange={e => setQrFilters({...qrFilters,is_active:e.target.value})}><option value="">All statuses</option><option value="true">Active</option><option value="false">Inactive</option></select></label>
         <button type="button" className="secondary qr-clear-filters" onClick={() => { setQrFilters({purpose:"",campaign_id:"",venue_id:"",is_active:""}); setSearch(""); }}>Clear filters</button>
       </div>}
