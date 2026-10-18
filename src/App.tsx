@@ -22,6 +22,7 @@ const columns: Record<string, string[]> = {
   "QR Manager": ["display_name", "public_code", "purpose", "campaign_name", "venue_name", "use_count", "is_active"],
 };
 const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+const toLocalDateTime = (value: string) => { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -151,8 +152,8 @@ export default function App() {
       ...raw,
       display_name: raw.display_name || row.source_name || "",
       max_uses: raw.max_uses == null ? "" : String(raw.max_uses),
-      starts_at: raw.starts_at ? String(raw.starts_at).slice(0, 16) : "",
-      expires_at: raw.expires_at ? String(raw.expires_at).slice(0, 16) : "",
+      starts_at: raw.starts_at ? toLocalDateTime(raw.starts_at) : "",
+      expires_at: raw.expires_at ? toLocalDateTime(raw.expires_at) : "",
     });
     setError("");
     setNotice("");
