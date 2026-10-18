@@ -14,7 +14,7 @@ Private operator console for the Honeybadger movie-campaign platform. It uses th
 
 ## Configuration
 
-For the deployed Cloudflare Pages app, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in **Settings → Variables and Secrets**. The app reads these through the `/api/config` Pages Function at runtime, rather than relying only on values embedded during the Vite build.
+For the deployed Cloudflare Worker, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Worker’s **Settings → Variables and Secrets**. The Worker entrypoint in `worker/index.ts` serves these public browser values at `/api/config` at runtime. Do not put a Supabase service-role key in these values. The deployment uses `wrangler.jsonc` to serve the built `dist` assets through the same Worker.
 
 For local Vite development, create a `.env.local` file from `.env.example` and fill in the same two values. Cloudflare dashboard variables are not automatically available to a local development process.
 
@@ -35,5 +35,5 @@ For local Vite development, create a `.env.local` file from `.env.example` and f
 
 - Never put a Supabase service-role key in this frontend.
 - Creating promotion QR codes uses `create_promotion_qr`; friend-invite QR codes use the admin-only `admin_create_friend_invite_qr` RPC.
-- The admin app is a separate deployment from the public Honeybadger Worker. Deploy this project independently after setting the environment variables.
+- The admin app is a separate Worker from the public Honeybadger Worker. Deploy this project independently after setting the two public Supabase variables in the admin Worker settings.
 - Existing QR codes retain their public codes when edited. Regenerate artwork only if the encoded URL itself has changed.
