@@ -341,7 +341,7 @@ function UserActivityPanel({ db }: { db: SupabaseClient }) {
     } finally { setLoadingDetail(false); }
   }
 
-  const pretty = (value: string | null | undefined) => (value || "Activity").replace(/_/g, " ").replace(/\\b\\w/g, (letter) => letter.toUpperCase());
+  const pretty = (value: string | null | undefined) => (value || "Activity").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   const fieldClass = "admin-user-search-input";
 
   return <div className="user-activity-page">
