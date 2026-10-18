@@ -304,6 +304,43 @@ function AdminDate({ value }: { value: string | null | undefined }) {
   return <>{value ? new Date(value).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—"}</>;
 }
 
+type UserTrackPoint = { id: string; lat: number; lon: number; label: string; recordedAt: string };
+function UserTrackMap({ points }: { points: UserTrackPoint[] }) {
+  if (!points.length) return null;
+  const lats = points.map(p => p.lat), lons = points.map(p => p.lon);
+  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const midLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+  const span = Math.max((Math.max(...lons) - Math.min(...lons)) * Math.max(Math.cos(midLat * Math.PI / 180), 0.1), Math.max(...lats) - Math.min(...lats), 0.002);
+  const zoom = Math.max(3, Math.min(18, Math.floor(Math.log2(1080 / span))));
+  const scale = 256 * Math.pow(2, zoom);
+  const world = (lat: number, lon: number) => {
+    const safeLat = Math.max(-85.0511, Math.min(85.0511, lat));
+    const sin = Math.sin(safeLat * Math.PI / 180);
+    return { x: (lon + 180) / 360 * scale, y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale };
+  };
+  const center = world(midLat, midLon);
+  const tileX = Math.floor(center.x / 256), tileY = Math.floor(center.y / 256);
+  const screen = (point: UserTrackPoint) => {
+    const p = world(point.lat, point.lon);
+    return { x: 384 + p.x - center.x, y: 256 + p.y - center.y };
+  };
+  const plotted = points.map(point => ({ ...point, ...screen(point) }));
+  const tiles = [];
+  for (let x = tileX - 1; x <= tileX + 1; x++) for (let y = tileY - 1; y <= tileY + 1; y++) {
+    const wrappedX = ((x % Math.pow(2, zoom)) + Math.pow(2, zoom)) % Math.pow(2, zoom);
+    tiles.push({ key: zoom + "-" + wrappedX + "-" + y, x: 384 + x * 256 - center.x, y: 256 + y * 256 - center.y, url: "https://tile.openstreetmap.org/" + zoom + "/" + wrappedX + "/" + y + ".png" });
+  }
+  return <div className="user-map-frame">
+    <svg className="user-track-map" viewBox="0 0 768 512" role="img" aria-label="Map showing the user's recorded activity locations and track">
+      <rect width="768" height="512" fill="#e5e4df"/>
+      {tiles.filter(tile => tile.y > -256 && tile.y < 512).map(tile => <image key={tile.key} href={tile.url} x={tile.x} y={tile.y} width="256" height="256" />)}
+      {plotted.length > 1 && <polyline points={plotted.map(p => p.x + "," + p.y).join(" ")} fill="none" stroke="#f56f2c" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />}
+      {plotted.map((point,index) => <g key={point.id}><circle cx={point.x} cy={point.y} r={index === plotted.length - 1 ? 10 : 7} fill={index === plotted.length - 1 ? "#f56f2c" : "#fff"} stroke="#28282c" strokeWidth="3"><title>{point.label + " · " + point.recordedAt}</title></circle><text x={point.x + 11} y={point.y - 10} fontSize="13" fontWeight="700" fill="#171719" stroke="#fff" strokeWidth="3" paintOrder="stroke">{index + 1}</text></g>)}
+    </svg>
+    <div className="user-map-caption"><span>{points.length} recorded point{points.length === 1 ? "" : "s"} · Map track oldest → newest</span><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></div>
+  </div>;
+}
+
 function UserActivityPanel({ db }: { db: SupabaseClient }) {
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState<AdminUserSearchResult[]>([]);
@@ -390,12 +427,16 @@ function UserActivityPanel({ db }: { db: SupabaseClient }) {
       <section className="user-location-section">
         <div className="user-timeline-heading"><h3>Location history & track</h3><small>{locationEvents.length} activity location{locationEvents.length === 1 ? "" : "s"}</small></div>
         {locationEvents.length === 0 ? <div className="user-empty">No GPS locations recorded. A user must enable location sharing in Honeycomb and grant browser location permission. Only activity-time locations are recorded; this is not background tracking.</div> : <>
-          {latestLocation && (() => {
-            const point = locationOf(latestLocation);
-            const bbox = [point.lon - 0.012, point.lat - 0.008, point.lon + 0.012, point.lat + 0.008].join("%2C");
-            const mapUrl = "https://www.openstreetmap.org/export/embed.html?bbox=" + bbox + "&layer=mapnik&marker=" + point.lat + "%2C" + point.lon;
-            return <div className="user-map-frame"><iframe title="Map of latest recorded activity location" src={mapUrl} loading="lazy" referrerPolicy="no-referrer" /><div className="user-map-caption">Latest recorded location · <AdminDate value={latestLocation.metadata?.location_recorded_at as string || latestLocation.created_at}/><a href={"https://www.openstreetmap.org/?mlat=" + point.lat + "&mlon=" + point.lon + "#map=16/" + point.lat + "/" + point.lon} target="_blank" rel="noreferrer">Open full map ↗</a></div></div>;
-          })()}
+          <UserTrackMap points={locationEvents.map(item => {
+            const point = locationOf(item);
+            return {
+              id: item.id,
+              lat: point.lat,
+              lon: point.lon,
+              label: pretty(item.event_description || item.event_type),
+              recordedAt: String(item.metadata?.location_recorded_at || item.created_at),
+            };
+          })} />
           <div className="user-track-card">
             <div className="user-track-card-head"><b>Recorded movement points</b><small>Oldest → newest · points come from logged activities</small></div>
             {locationEvents.length > 1 && <svg className="user-track-plot" viewBox="0 0 300 160" role="img" aria-label="Relative movement between recorded activity locations">
