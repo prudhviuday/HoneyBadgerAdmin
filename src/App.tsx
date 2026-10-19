@@ -233,6 +233,7 @@ export default function App() {
     delete payload.task_points;
 
     setBusy(true); setError(""); setNotice("");
+    let createdCampaignForEditing: RecordRow | null = null;
     try {
       if (section === "Campaigns" && !editingRecordId) {
         const { data: campaign, error: campaignError } = await db.from("campaigns").insert(payload).select("id").single();
@@ -265,7 +266,8 @@ export default function App() {
             throw new Error("Tasks could not be saved: " + taskError.message + "." + rollbackNote);
           }
         }
-        setNotice("Campaign created and " + selectedTasks.length + " standard task(s) attached to it.");
+        createdCampaignForEditing = { ...payload, id: campaign.id };
+        setNotice("Campaign created and " + selectedTasks.length + " standard task(s) attached. Add its locations below.");
       } else if (section === "Campaign Locations" && editingLocationId) {
         const { data: updated, error: updateError } = await db.from("locations").update(payload).eq("id", editingLocationId).select("id");
         if (updateError) throw new Error("Could not update campaign location: " + updateError.message);
@@ -285,7 +287,10 @@ export default function App() {
       const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null;
       setShowAdd(false); setDraft({}); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null);
       await loadData();
-      if (backToCampaignId) {
+      if (createdCampaignForEditing) {
+        setSection("Campaigns"); setEditingRecordId(createdCampaignForEditing.id);
+        setDraft({ ...createdCampaignForEditing, selected_task_keys: [], task_points: {} }); setShowAdd(true);
+      } else if (backToCampaignId) {
         const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId);
         if (campaign) {
           setSection("Campaigns"); setEditingRecordId(campaign.id);
