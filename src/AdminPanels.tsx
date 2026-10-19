@@ -64,22 +64,36 @@ export function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseC
   async function refresh() {
     setLoading(true);
     setError("");
-    const [categoryResult, taskResult, eventResult, progressProbe, verificationProbe, verifierCatalog] = await Promise.all([
+    const [categoryResult, taskResult, eventResult, verifierCatalog] = await Promise.all([
       db.from("activity_event_types").select("id,code,description,is_important").order("id"),
       db.from("missions").select("*").order("created_at", { ascending: false }).limit(500),
       db.from("activity_events").select("*").order("created_at", { ascending: false }).limit(100),
-      db.from("missions").select("progress_event_type_id,progress_mode").limit(1),
-      db.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
       db.functions.invoke("complete-task", { body: { action: "catalog" } }),
     ]);
     if (categoryResult.error) setError("Could not load activity categories: " + categoryResult.error.message);
     else setCategories((categoryResult.data || []) as ActivityCategory[]);
-    if (taskResult.error) setError("Could not load tasks: " + taskResult.error.message);
-    else setTasks((taskResult.data || []) as TaskRow[]);
+    if (taskResult.error) {
+      setError("Could not load tasks: " + taskResult.error.message);
+    } else {
+      const loadedTasks = (taskResult.data || []) as TaskRow[];
+      setTasks(loadedTasks);
+      if (loadedTasks.length) {
+        // select("*") already returned the task schema, so avoid two extra schema probes.
+        const columns = new Set(Object.keys(loadedTasks[0]));
+        setSupportsConfiguredProgress(columns.has("progress_event_type_id") && columns.has("progress_mode"));
+        setSupportsVerificationConfig(columns.has("verification_action") && columns.has("verification_config") && columns.has("ui_component") && columns.has("ui_config"));
+      } else {
+        // An empty missions table does not tell us whether optional columns exist.
+        const [progressProbe, verificationProbe] = await Promise.all([
+          db.from("missions").select("progress_event_type_id,progress_mode").limit(1),
+          db.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
+        ]);
+        setSupportsConfiguredProgress(!progressProbe.error);
+        setSupportsVerificationConfig(!verificationProbe.error);
+      }
+    }
     if (eventResult.error) setError("Could not load activity log: " + eventResult.error.message);
     else setEvents(eventResult.data || []);
-    setSupportsConfiguredProgress(!progressProbe.error);
-    setSupportsVerificationConfig(!verificationProbe.error);
     const remoteMethods = verifierCatalog.data?.methods;
     const remoteModes = verifierCatalog.data?.modes;
     const remoteUiComponents = verifierCatalog.data?.uiComponents;
