@@ -5,10 +5,11 @@ import "./styles.css";
 
 type Config = { url?: string; anonKey?: string };
 type RecordRow = Record<string, any>;
-type Section = "Overview" | "Movies" | "Campaigns" | "Events & Hunts" | "Venues" | "QR Manager" | "User Activity" | "Activity & Tasks";
+type Section = "Overview" | "Movies" | "Clients" | "Campaigns" | "Events & Hunts" | "Venues" | "QR Manager" | "User Activity" | "Activity & Tasks";
 const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Overview", icon: LayoutDashboard },
   { name: "Movies", icon: Film, table: "movies" },
+  { name: "Clients", icon: Building2, table: "clients" },
   { name: "Campaigns", icon: Activity, table: "campaigns" },
   { name: "Events & Hunts", icon: CalendarDays, table: "missions" },
   { name: "Venues", icon: Building2, table: "venues" },
@@ -17,13 +18,27 @@ const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Activity & Tasks", icon: ListChecks },
 ];
 const columns: Record<string, string[]> = {
-  Movies: ["title", "language", "release_date", "active"],
-  Campaigns: ["name", "movie_id", "active"],
+  Movies: ["title", "client_name", "language", "release_date", "active"],
+  Clients: ["name", "contact_person", "phone", "email", "active"],
+  Campaigns: ["name", "movie_title", "client_name", "active"],
   "Events & Hunts": ["name", "mission_type", "reward_points", "is_active"],
   Venues: ["name", "venue_type", "city", "state", "active"],
   "QR Manager": ["display_name", "short_code", "purpose", "campaign_name", "venue_name", "use_count", "is_active"],
 };
 const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+type CampaignTaskTemplate = {
+  key: string; name: string; description: string; mission_type: string;
+  target_value: number; reward_points: number; reward_entries: number;
+  summary: string; lockedReason?: string;
+};
+const STANDARD_CAMPAIGN_TASKS: CampaignTaskTemplate[] = [
+  { key: "scan_first_qr", name: "Scan your first QR", description: "Scan an official QR code from this movie campaign.", mission_type: "scan_count", target_value: 1, reward_points: 15, reward_entries: 0, summary: "1 QR scan · simple starter task" },
+  { key: "scan_three_qrs", name: "Scan 3 campaign QR codes", description: "Scan QR codes at three campaign placements to explore the promotion.", mission_type: "scan_count", target_value: 3, reward_points: 40, reward_entries: 0, summary: "3 accepted scans · good repeat-engagement task" },
+  { key: "visit_three_locations", name: "Explore 3 campaign locations", description: "Discover three different campaign locations.", mission_type: "unique_locations", target_value: 3, reward_points: 75, reward_entries: 0, summary: "3 locations · supports location discovery" },
+  { key: "refer_three_friends", name: "Refer 3 friends", description: "Invite three friends who complete the required referral sign-up.", mission_type: "referral_signup_completed", target_value: 3, reward_points: 100, reward_entries: 0, summary: "3 qualified friends · 100 points", lockedReason: "Locked until the app has a referral-invite task action and the task-progress migration is applied." },
+  { key: "watch_trailer", name: "Watch the official trailer", description: "Watch the official movie trailer.", mission_type: "watch_trailer", target_value: 1, reward_points: 15, reward_entries: 0, summary: "1 trailer · 15 points", lockedReason: "Locked because opening a trailer does not prove that it was watched. A trusted watch verifier is not registered yet." },
+];
 const toLocalDateTime = (value: string) => { const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 
 export default function App() {
@@ -46,6 +61,7 @@ export default function App() {
   const [selectedQr, setSelectedQr] = useState<RecordRow | null>(null);
   const [qrDraft, setQrDraft] = useState<RecordRow>({});
   const [qrFilters, setQrFilters] = useState({ purpose: "", campaign_id: "", venue_id: "", is_active: "" });
+  const [taskSchema, setTaskSchema] = useState({ progress: false, verification: false });
 
   useEffect(() => {
     let cancelled = false;
@@ -93,16 +109,22 @@ export default function App() {
       const { data, error } = await client.from(s.table!).select("*").limit(500);
       return { name: s.name, data: data || [], error };
     }));
-    const [sourceResult, profileResult] = await Promise.all([
+    const [sourceResult, profileResult, categoryResult, progressProbe, verificationProbe] = await Promise.all([
       client.from("interaction_sources").select("id,name,source_type,points,reward_entries,campaign_id,is_active").limit(1000),
       client.from("profiles").select("user_id,display_name").limit(1000),
+      client.from("activity_event_types").select("id,code,description,is_important").limit(1000),
+      client.from("missions").select("progress_event_type_id,progress_mode").limit(1),
+      client.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
     ]);
     const next: Record<string, RecordRow[]> = {};
     results.forEach(r => { if (r.error) console.warn("Could not load " + r.name, r.error); next[r.name] = r.data; });
     if (sourceResult.error) console.warn("Could not load QR interaction sources", sourceResult.error);
     if (profileResult.error) console.warn("Could not load QR user profiles", profileResult.error);
+    if (categoryResult.error) console.warn("Could not load activity event types", categoryResult.error);
     next["QR Sources"] = sourceResult.data || [];
     next["QR Profiles"] = profileResult.data || [];
+    next["Activity Categories"] = categoryResult.data || [];
+    setTaskSchema({ progress: !progressProbe.error, verification: !verificationProbe.error });
     setRows(next);
   }
 
@@ -115,22 +137,125 @@ export default function App() {
   }
 
   async function addRecord(e: FormEvent) {
-    e.preventDefault(); if (!db) return;
+    e.preventDefault();
+    if (!db) return;
     const table = sections.find(s => s.name === section)?.table;
-    if (!table || !["Movies", "Campaigns", "Venues"].includes(section)) return;
-    const payload = { ...draft };
-    if (section === "Movies") { payload.active = payload.active !== false; if (!payload.release_date) delete payload.release_date; }
-    if (section === "Campaigns") { payload.active = payload.active !== false; if (!payload.movie_id) delete payload.movie_id; }
-    if (section === "Venues") { payload.active = payload.active !== false; payload.venue_type ||= "shop"; payload.city ||= "Chennai"; payload.state ||= "Tamil Nadu"; }
+    if (!table || !["Movies", "Clients", "Campaigns", "Venues"].includes(section)) return;
+
+    const payload: RecordRow = { ...draft };
+    const emptyToNull = (value: unknown) => String(value ?? "").trim() || null;
+    const optionalFields = (row: RecordRow, fields: string[]) => {
+      for (const field of fields) row[field] = emptyToNull(row[field]);
+    };
+
+    if (section === "Movies") {
+      payload.title = String(payload.title || "").trim();
+      if (!payload.title) { setError("Enter a movie title."); return; }
+      payload.client_id = emptyToNull(payload.client_id);
+      optionalFields(payload, ["language", "release_date", "poster_url", "trailer_url", "notes"]);
+      payload.active = payload.active !== false;
+    }
+    if (section === "Clients") {
+      payload.name = String(payload.name || "").trim();
+      if (!payload.name) { setError("Enter the client or production-company name."); return; }
+      optionalFields(payload, ["contact_person", "phone", "email", "address", "city", "state", "notes"]);
+      payload.active = payload.active !== false;
+      payload.status = payload.active ? "active" : "inactive";
+    }
+    if (section === "Campaigns") {
+      payload.name = String(payload.name || "").trim();
+      if (!payload.name) { setError("Enter a campaign name."); return; }
+      if (!payload.movie_id || !(rows.Movies || []).some(movie => movie.id === payload.movie_id)) {
+        setError("Choose an existing movie from the Movies panel before creating the campaign."); return;
+      }
+      const selectedMovie = (rows.Movies || []).find(movie => movie.id === payload.movie_id);
+      payload.client_id = emptyToNull(payload.client_id) || selectedMovie?.client_id || null;
+      payload.media_url = emptyToNull(payload.media_url) || selectedMovie?.trailer_url || null;
+      payload.terms_url = emptyToNull(payload.terms_url);
+      payload.active = payload.active !== false;
+    }
+    if (section === "Venues") {
+      payload.name = String(payload.name || "").trim();
+      if (!payload.name) { setError("Enter a venue name."); return; }
+      payload.active = payload.active !== false;
+      payload.venue_type ||= "shop";
+      payload.city ||= "Chennai";
+      payload.state ||= "Tamil Nadu";
+      optionalFields(payload, ["address"]);
+    }
+
+    const selectedTaskKeys = section === "Campaigns" && Array.isArray(payload.selected_task_keys) ? payload.selected_task_keys as string[] : [];
+    const selectedTasks = STANDARD_CAMPAIGN_TASKS.filter(task => selectedTaskKeys.includes(task.key));
+    if (selectedTasks.some(task => !!task.lockedReason)) {
+      setError("One or more selected task templates are not ready for production yet. Remove the locked task(s) and choose a supported template."); return;
+    }
+    for (const task of selectedTasks) {
+      const points = Number(payload.task_points?.[task.key] ?? task.reward_points);
+      if (!Number.isInteger(points) || points < 0) { setError("Task rewards must be non-negative whole numbers."); return; }
+    }
+    delete payload.selected_task_keys;
+    delete payload.task_points;
+
     setBusy(true); setError(""); setNotice("");
-    const { error } = await db.from(table).insert(payload);
-    if (error) setError(error.message);
-    else { setNotice("Record created."); setShowAdd(false); setDraft({}); await loadData(); }
-    setBusy(false);
+    try {
+      if (section === "Campaigns") {
+        const { data: campaign, error: campaignError } = await db.from("campaigns").insert(payload).select("id").single();
+        if (campaignError || !campaign) throw new Error("Could not create campaign: " + (campaignError?.message || "No campaign row was returned."));
+        if (selectedTasks.length) {
+          const categoryRows = rows["Activity Categories"] || [];
+          const qrTaskType = categoryRows.find(type => type.code === "qr_scan_task_verified");
+          const missionRows = selectedTasks.map(task => {
+            const mission: RecordRow = {
+              campaign_id: campaign.id, name: task.name, description: task.description,
+              mission_type: task.mission_type, target_value: task.target_value,
+              reward_points: Number(draft.task_points?.[task.key] ?? task.reward_points),
+              reward_entries: task.reward_entries, is_active: true,
+            };
+            if (taskSchema.progress && taskSchema.verification && qrTaskType && ["scan_first_qr", "scan_three_qrs"].includes(task.key)) {
+              mission.mission_type = "qr_scan_task_verified";
+              mission.progress_event_type_id = qrTaskType.id;
+              mission.progress_mode = "event_count";
+              mission.verification_action = "recorded_qr_scan";
+              mission.verification_config = {};
+              mission.ui_component = "qr_scanner";
+              mission.ui_config = { button_label: "Scan QR" };
+            }
+            return mission;
+          });
+          const { error: taskError } = await db.from("missions").insert(missionRows);
+          if (taskError) {
+            const { error: rollbackError } = await db.from("campaigns").delete().eq("id", campaign.id);
+            const rollbackNote = rollbackError ? " The campaign row may need manual cleanup (ID " + campaign.id + ")." : " The incomplete campaign was rolled back.";
+            throw new Error("Tasks could not be saved: " + taskError.message + "." + rollbackNote);
+          }
+        }
+        setNotice("Campaign created and " + selectedTasks.length + " standard task(s) attached to it.");
+      } else {
+        const { error: insertError } = await db.from(table).insert(payload);
+        if (insertError) throw new Error("Could not create record: " + insertError.message);
+        setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
+      }
+      setShowAdd(false); setDraft({}); await loadData();
+    } catch (e: any) {
+      setError(e?.message || "Could not create this record.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const visibleRows = useMemo(() => {
     const base = rows[section] || [];
+    if (section === "Movies") {
+      return base.map(row => ({ ...row, client_name: (rows.Clients || []).find(client => client.id === row.client_id)?.name || "—" }))
+        .filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
+    }
+    if (section === "Campaigns") {
+      return base.map(row => {
+        const movie = (rows.Movies || []).find(item => item.id === row.movie_id);
+        const client = (rows.Clients || []).find(item => item.id === (row.client_id || movie?.client_id));
+        return { ...row, movie_title: movie?.title || "No movie linked", client_name: client?.name || "—" };
+      }).filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
+    }
     if (section !== "QR Manager") return base.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
     const sources = rows["QR Sources"] || [];
     const profiles = rows["QR Profiles"] || [];
@@ -215,14 +340,67 @@ export default function App() {
   return <div className="layout">
     <aside className="sidebar"><div className="brand"><div className="brand-icon"><Clapperboard/></div><div><b>HONEYBADGER</b><small>ADMIN CONTROL ROOM</small></div></div><p className="eyebrow">WORKSPACE</p><nav>{sections.map(s => <button key={s.name} className={section === s.name ? "nav active" : "nav"} onClick={() => { setSection(s.name); setSearch(""); setShowAdd(false); }}><s.icon size={17}/>{s.name}{s.table && <span>{total(s.name)}</span>}</button>)}</nav><div className="side-bottom"><i/> Supabase connected <button title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></aside>
     <main><header className="topbar"><span>Workspace / <b>{section}</b></span><div><span className="live">● LIVE DATA</span><button className="icon-button" title="Refresh data" onClick={() => loadData()}><RefreshCw size={16}/></button><button className="icon-button" title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></header>
-      <div className="content"><div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>Manage the same live data used by the Honeybadger app.</p></div>{["Movies","Campaigns","Venues"].includes(section) && <button className="button" onClick={() => { setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true } : section === "Campaigns" ? { name: "", active: true } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(!showAdd); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section.slice(0,-1).toLowerCase()}</button>}</div>
+      <div className="content"><div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>Manage the same live data used by the Honeybadger app.</p></div>{["Movies","Clients","Campaigns","Venues"].includes(section) && <button className="button" onClick={() => { setError(""); setNotice(""); setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true, client_id: "" } : section === "Clients" ? { name: "", active: true, status: "active" } : section === "Campaigns" ? { name: "", active: true, movie_id: "", client_id: "", selected_task_keys: [], task_points: {} } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(!showAdd); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section.slice(0,-1).toLowerCase()}</button>}</div>
       {error && <div className="error">{error}</div>}{notice && <div className="notice">{notice}</div>}
       {section === "User Activity" ? <UserActivityPanel db={db} /> : section === "Activity & Tasks" ? <ActivityTasksPanel db={db} campaigns={rows.Campaigns || []} onRefresh={loadData} /> : section === "Overview" ? <><div className="hero"><span className="eyebrow">SYSTEM OVERVIEW</span><h2>Every campaign.<br/><em>One command centre.</em></h2><p>Manage movie records, campaigns, events, partner venues and QR codes connected to your production marketing.</p></div><div className="stats">{[{name:"Movies",icon:Film},{name:"Campaigns",icon:Activity},{name:"Events & Hunts",icon:CalendarDays},{name:"Venues",icon:Building2},{name:"QR Manager",icon:QrCode},{name:"Activity & Tasks",icon:ListChecks}].map(s=><button className="stat" key={s.name} onClick={() => setSection(s.name as Section)}><s.icon size={18}/><span>{s.name}</span><b>{total(s.name)}</b></button>)}</div><div className="panel"><h3>Recent movies</h3><DataTable rows={(rows.Movies || []).slice(0,8)} columns={columns.Movies}/></div></> : <>
-      {showAdd && <form className="add-form" onSubmit={addRecord}><h3>New {section === "Venues" ? "venue" : section.slice(0,-1).toLowerCase()}</h3>
-        {section === "Movies" && <><label>Movie title<input required value={draft.title || ""} onChange={e => setDraft({...draft,title:e.target.value})}/></label><label>Language<input value={draft.language || ""} onChange={e => setDraft({...draft,language:e.target.value})}/></label><label>Release date<input type="date" value={draft.release_date || ""} onChange={e => setDraft({...draft,release_date:e.target.value})}/></label><label>Poster URL<input type="url" value={draft.poster_url || ""} onChange={e => setDraft({...draft,poster_url:e.target.value})}/></label></>}
-        {section === "Campaigns" && <><label>Campaign name<input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})}/></label><label>Movie ID<input placeholder="Paste movie UUID" value={draft.movie_id || ""} onChange={e => setDraft({...draft,movie_id:e.target.value})}/></label><label>Media URL<input type="url" value={draft.media_url || ""} onChange={e => setDraft({...draft,media_url:e.target.value})}/></label></>}
-        {section === "Venues" && <><label>Venue name<input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})}/></label><label>Type<select value={draft.venue_type || "shop"} onChange={e => setDraft({...draft,venue_type:e.target.value})}>{["shop","mall","college","cafe","theatre","other"].map(v=><option key={v}>{v}</option>)}</select></label><label>City<input value={draft.city || ""} onChange={e => setDraft({...draft,city:e.target.value})}/></label><label>State<input value={draft.state || ""} onChange={e => setDraft({...draft,state:e.target.value})}/></label><label>Address<input value={draft.address || ""} onChange={e => setDraft({...draft,address:e.target.value})}/></label></>}
-        <div className="form-actions"><button type="button" className="secondary" onClick={() => setShowAdd(false)}>Cancel</button><button className="button" disabled={busy}>{busy ? "Saving…" : "Create record"}</button></div>
+      {showAdd && <form className="add-form" onSubmit={addRecord}>
+        <h3>{section === "Venues" ? "New venue" : section === "Clients" ? "New client / production company" : section === "Campaigns" ? "New movie campaign" : "New movie"}</h3>
+        {section === "Movies" && <>
+          <p className="form-intro">Create the movie record first. Campaigns must select a saved movie record below; optional fields can be filled later.</p>
+          <label>Movie title <span className="required-mark">Required</span><input required value={draft.title || ""} onChange={e => setDraft({...draft,title:e.target.value})} placeholder="e.g. Mandaadi"/></label>
+          <label>Production company / client<select value={draft.client_id || ""} onChange={e => setDraft({...draft,client_id:e.target.value})}><option value="">No client linked yet</option>{(rows.Clients || []).filter(client => client.active !== false).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+          <label>Language<input value={draft.language || ""} onChange={e => setDraft({...draft,language:e.target.value})} placeholder="Tamil"/></label>
+          <label>Release date<input type="date" value={draft.release_date || ""} onChange={e => setDraft({...draft,release_date:e.target.value})}/></label>
+          <label>Poster image URL<input type="url" value={draft.poster_url || ""} onChange={e => setDraft({...draft,poster_url:e.target.value})} placeholder="https://…"/></label>
+          <label>Official trailer URL<input type="url" value={draft.trailer_url || ""} onChange={e => setDraft({...draft,trailer_url:e.target.value})} placeholder="https://youtube.com/…"/></label>
+          <label>Internal notes<textarea value={draft.notes || ""} onChange={e => setDraft({...draft,notes:e.target.value})} rows={2} placeholder="Optional production or campaign notes"/></label>
+          <label className="inline-check"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({...draft,active:e.target.checked})}/> Movie is active</label>
+        </>}
+        {section === "Clients" && <>
+          <p className="form-intro">Save the production company or paying client once, then reuse it across movies and campaigns.</p>
+          <label>Client / production company name <span className="required-mark">Required</span><input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})} placeholder="e.g. Star Pictures"/></label>
+          <label>Contact person<input value={draft.contact_person || ""} onChange={e => setDraft({...draft,contact_person:e.target.value})} placeholder="Name"/></label>
+          <label>Phone<input type="tel" value={draft.phone || ""} onChange={e => setDraft({...draft,phone:e.target.value})} placeholder="Contact number"/></label>
+          <label>Email<input type="email" value={draft.email || ""} onChange={e => setDraft({...draft,email:e.target.value})} placeholder="producer@example.com"/></label>
+          <label>Address<input value={draft.address || ""} onChange={e => setDraft({...draft,address:e.target.value})} placeholder="Office address"/></label>
+          <label>City<input value={draft.city || ""} onChange={e => setDraft({...draft,city:e.target.value})} placeholder="Chennai"/></label>
+          <label>State<input value={draft.state || ""} onChange={e => setDraft({...draft,state:e.target.value})} placeholder="Tamil Nadu"/></label>
+          <label>Notes<textarea value={draft.notes || ""} onChange={e => setDraft({...draft,notes:e.target.value})} rows={2}/></label>
+          <label className="inline-check"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({...draft,active:e.target.checked})}/> Client is active</label>
+        </>}
+        {section === "Campaigns" && <>
+          <p className="form-intro">A campaign belongs to one existing movie. Choose the movie first; the production company can inherit from that movie.</p>
+          <label>Campaign name <span className="required-mark">Required</span><input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})} placeholder="e.g. Mandaadi • Chennai City Hunt"/></label>
+          <label>Movie <span className="required-mark">Required</span><select required value={draft.movie_id || ""} onChange={e => { const movie = (rows.Movies || []).find(item => item.id === e.target.value); setDraft({...draft,movie_id:e.target.value,media_url:draft.media_url || movie?.trailer_url || ""}); }}><option value="">Choose an existing movie…</option>{(rows.Movies || []).filter(movie => movie.active !== false).map(movie => <option key={movie.id} value={movie.id}>{movie.title}{movie.language ? " · " + movie.language : ""}{movie.release_date ? " · " + movie.release_date : ""}</option>)}</select>{!(rows.Movies || []).length && <small className="field-help">No movie exists yet. Cancel and create one from the Movies panel first.</small>}</label>
+          <label>Client / production company<select value={draft.client_id || ""} onChange={e => setDraft({...draft,client_id:e.target.value})}><option value="">Use the movie's production company</option>{(rows.Clients || []).filter(client => client.active !== false).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select><small className="field-help">Leave this as-is to inherit the selected movie's client.</small></label>
+          <label>Campaign media / trailer URL<input type="url" value={draft.media_url || ""} onChange={e => setDraft({...draft,media_url:e.target.value})} placeholder="Defaults to the movie trailer URL"/></label>
+          <label>Terms and conditions URL<input type="url" value={draft.terms_url || ""} onChange={e => setDraft({...draft,terms_url:e.target.value})} placeholder="https://…"/></label>
+          <label className="inline-check"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({...draft,active:e.target.checked})}/> Campaign is active</label>
+          <div className="campaign-task-picker">
+            <div className="campaign-task-picker-head"><div><h4>Standard campaign tasks</h4><p>Select the tasks participants can complete for points. Rewards can be adjusted per campaign.</p></div><span>{(Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).length} selected</span></div>
+            <div className="campaign-task-list">
+              {STANDARD_CAMPAIGN_TASKS.map(task => {
+                const checked = (Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).includes(task.key);
+                const locked = !!task.lockedReason;
+                return <div className={"campaign-task-choice" + (locked ? " is-locked" : "")} key={task.key}>
+                  <label className="campaign-task-check"><input type="checkbox" disabled={locked} checked={checked} onChange={e => { const prior = Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys as string[] : []; setDraft({...draft,selected_task_keys:e.target.checked ? [...prior.filter(key => key !== task.key),task.key] : prior.filter(key => key !== task.key)}); }}/><span className="campaign-task-copy"><b>{task.name}</b><small>{task.summary}</small>{locked && <small className="task-locked-note">{task.lockedReason}</small>}</span></label>
+                  <div className="campaign-task-reward"><label>Points<input type="number" min="0" step="1" disabled={locked} value={draft.task_points?.[task.key] ?? task.reward_points} onChange={e => setDraft({...draft,task_points:{...(draft.task_points || {}),[task.key]:e.target.value}})}/></label></div>
+                </div>;
+              })}
+            </div>
+            {!(rows.Movies || []).length && <p className="field-help">Create a movie before a campaign. Campaigns with no movie are not allowed in this form.</p>}
+            {(!taskSchema.progress || !taskSchema.verification) && <p className="field-help">This database currently has the legacy task schema. QR-scan tasks can still be created, but the server-configured verification and task-progress fields will only be saved after their migrations are applied.</p>}
+            <p className="field-help">Important: “Watch trailer” is shown as locked because opening a URL is not proof of watching. Once the app has a trusted watch verifier, it can be enabled here safely.</p>
+          </div>
+        </>}
+        {section === "Venues" && <>
+          <label>Venue name <span className="required-mark">Required</span><input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})} placeholder="Venue name"/></label>
+          <label>Type<select value={draft.venue_type || "shop"} onChange={e => setDraft({...draft,venue_type:e.target.value})}>{["shop","mall","college","cafe","theatre","other"].map(v=><option key={v}>{v}</option>)}</select></label>
+          <label>City<input value={draft.city || ""} onChange={e => setDraft({...draft,city:e.target.value})}/></label>
+          <label>State<input value={draft.state || ""} onChange={e => setDraft({...draft,state:e.target.value})}/></label>
+          <label>Address<input value={draft.address || ""} onChange={e => setDraft({...draft,address:e.target.value})}/></label>
+        </>}
+        <div className="form-actions"><button type="button" className="secondary" onClick={() => setShowAdd(false)}>Cancel</button><button className="button" disabled={busy || (section === "Campaigns" && !(rows.Movies || []).length)}>{busy ? "Saving…" : section === "Campaigns" ? "Create campaign + tasks" : "Create record"}</button></div>
       </form>}
       <div className="toolbar"><div className="search"><Search size={16}/><input placeholder={section === "QR Manager" ? "Search by QR name, code, venue, purpose…" : "Search " + section.toLowerCase()} value={search} onChange={e => setSearch(e.target.value)}/></div><span>{visibleRows.length} records</span></div>
       {section === "QR Manager" && selectedQr && <form className="qr-editor" onSubmit={saveQr}>
