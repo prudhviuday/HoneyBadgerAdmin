@@ -166,8 +166,8 @@ export default function App() {
     }
   }
 
-  async function loadQrLookups(client = db) {
-    if (!client || lookupLoaded.qr) return;
+  async function loadQrLookups(client = db, force = false) {
+    if (!client || (lookupLoaded.qr && !force)) return;
     const [sourceResult, profileResult] = await Promise.all([
       client.from("interaction_sources").select("id,name,source_type,points,reward_entries,campaign_id,is_active,location_id").order("name").limit(1000),
       client.from("profiles").select("user_id,display_name").order("display_name").limit(1000),
@@ -185,8 +185,8 @@ export default function App() {
     if (!sourceResult.error && !profileResult.error) setLookupLoaded(current => ({ ...current, qr: true }));
   }
 
-  async function loadActivityCategories(client = db) {
-    if (!client || lookupLoaded.categories) return;
+  async function loadActivityCategories(client = db, force = false) {
+    if (!client || (lookupLoaded.categories && !force)) return;
     const { data, error: categoryError } = await client.from("activity_event_types")
       .select("id,code,description,is_important").order("id").limit(1000);
     if (categoryError) {
@@ -685,7 +685,7 @@ export default function App() {
 
   return <div className="layout">
     <aside className="sidebar"><div className="brand"><div className="brand-icon"><Clapperboard/></div><div><b>HONEYBADGER</b><small>ADMIN CONTROL ROOM</small></div></div><p className="eyebrow">WORKSPACE</p><nav>{sections.filter(s => s.name !== "Events & Hunts").map(s => <button key={s.name} className={section === s.name ? "nav active" : "nav"} onClick={() => { setSection(s.name); setSearch(""); setShowAdd(false); setEditingRecordId(null); setEditingLocationId(null); setReturnToCampaignId(null); setDraft({}); }}><s.icon size={17}/>{s.name}{s.table && <span>{total(s.name)}</span>}</button>)}</nav><div className="side-bottom"><i/> Supabase connected <button title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></aside>
-    <main><header className="topbar"><span>Workspace / <b>{section}</b></span><div><span className="live">● LIVE DATA</span><button className="icon-button" title="Refresh data" onClick={() => { void loadData(); if (section === "QR Manager") { setLookupLoaded(current => ({ ...current, qr: false })); void loadQrLookups(db); } if (section === "Campaigns") { setLookupLoaded(current => ({ ...current, categories: false })); void loadActivityCategories(db); } }}><RefreshCw size={16}/></button><button className="icon-button" title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></header>
+    <main><header className="topbar"><span>Workspace / <b>{section}</b></span><div><span className="live">● LIVE DATA</span><button className="icon-button" title="Refresh data" onClick={() => { void loadData(); if (section === "QR Manager") { setLookupLoaded(current => ({ ...current, qr: false })); void loadQrLookups(db, true); } if (section === "Campaigns") { setLookupLoaded(current => ({ ...current, categories: false })); void loadActivityCategories(db, true); } }}><RefreshCw size={16}/></button><button className="icon-button" title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></header>
       <div className="content">{loadWarning && <div className="error" role="status">{loadWarning}</div>}<div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>{section === "Campaign Locations" ? "Campaign-specific map pins store coordinates, category and points. Search and reuse an existing pin across campaigns instead of entering its details again." : section === "Venues" ? "Reusable physical place records—create each mall, college, shop or theatre once. Campaign Locations are separate campaign-specific map pins that can link to a venue." : ["Movies", "Campaigns", "Clients"].includes(section) ? "Click a row in the table to edit the saved record. Campaigns also let you add and edit their locations." : "Manage the same live data used by the Honeybadger app."}</p></div>{["Movies","Clients","Campaigns","Venues","Campaign Locations"].includes(section) && <button className="button" onClick={() => { setError(""); setNotice(""); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null); setLocationPickerSearch(""); setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true, client_id: "" } : section === "Clients" ? { name: "", active: true, status: "active" } : section === "Campaigns" ? { name: "", active: true, movie_id: "", client_id: "", selected_task_keys: [], task_points: {} } : section === "Campaign Locations" ? { name: "", campaign_id: "", category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(true); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section === "Campaign Locations" ? "campaign location" : section.slice(0,-1).toLowerCase()}</button>}</div>
       {error && <div className="error">{error}</div>}{notice && <div className="notice">{notice}</div>}
       {section === "User Activity" ? <UserActivityPanel db={db} /> : section === "Activity & Tasks" ? <ActivityTasksPanel db={db} campaigns={rows.Campaigns || []} onRefresh={loadData} /> : section === "Overview" ? <><div className="hero"><span className="eyebrow">SYSTEM OVERVIEW</span><h2>Every campaign.<br/><em>One command centre.</em></h2><p>Manage movie records, campaigns, events, partner venues and QR codes connected to your production marketing.</p></div><div className="stats">{[{name:"Movies",icon:Film},{name:"Campaigns",icon:Activity},{name:"Venues",icon:Building2},{name:"Campaign Locations",icon:MapPin},{name:"QR Manager",icon:QrCode},{name:"Activity & Tasks",icon:ListChecks}].map(s=><button className="stat" key={s.name} onClick={() => setSection(s.name as Section)}><s.icon size={18}/><span>{s.name}</span><b>{total(s.name)}</b></button>)}</div><div className="panel"><h3>Recent movies</h3><DataTable rows={(rows.Movies || []).slice(0,8)} columns={columns.Movies}/></div></> : <>
@@ -800,7 +800,7 @@ export default function App() {
               {locationLibraryResults.map(result => result.kind === "map-point" ? <article className="location-library-result" key={"map-" + result.id}>
                 <span className="location-library-icon"><MapPin size={16}/></span>
                 <div className="location-library-copy"><b>{result.title}</b><small>{result.subtitle}</small></div>
-                <button type="button" className="secondary location-library-action" disabled={busy || !draft.campaign_id || String(result.item.campaign_id) === String(draft.campaign_id)} onClick={() => void addExistingMapPointToCampaign(result.item)}>{!draft.campaign_id ? "Choose campaign" : String(result.item.campaign_id) === String(draft.campaign_id) ? "Already added" : "Add to campaign"}</button>
+                <button type="button" className="secondary location-library-action" disabled={busy || !draft.campaign_id || String(result.item.campaign_id) === String(draft.campaign_id)} onClick={() => void addExistingMapPointToCampaign(result.item)}>{!draft.campaign_id ? "Choose campaign" : String(result.item.campaign_id) === String(draft.campaign_id) ? "Already added" : returnToCampaignId ? "Add & keep going" : "Add to campaign"}</button>
               </article> : <article className="location-library-result" key={"venue-" + result.id}>
                 <span className="location-library-icon"><Building2 size={16}/></span>
                 <div className="location-library-copy"><b>{result.title}</b><small>{result.subtitle} · No saved map pin yet</small></div>
