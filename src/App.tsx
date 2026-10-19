@@ -276,6 +276,29 @@ export default function App() {
 
   const visibleRows = useMemo(() => {
     const base = rows[section] || [];
+    if (section === "Venues") {
+      return base.map(venue => {
+        const locationLinks = (rows["Campaign Locations"] || []).filter(location => location.venue_id === venue.id);
+        const qrLinks = (rows["QR Manager"] || []).filter(qr => qr.venue_id === venue.id && qr.campaign_id);
+        const campaignIds = Array.from(new Set([...locationLinks.map(location => location.campaign_id), ...qrLinks.map(qr => qr.campaign_id)].filter(Boolean)));
+        const linkedCampaigns = campaignIds.map(id => (rows.Campaigns || []).find(campaign => campaign.id === id)).filter(Boolean);
+        const movieTitles = Array.from(new Set(linkedCampaigns.map(campaign => (rows.Movies || []).find(movie => movie.id === campaign.movie_id)?.title).filter(Boolean)));
+        return {
+          ...venue,
+          linked_movies: movieTitles.join(" · ") || "Not linked to a movie yet",
+          linked_campaigns: linkedCampaigns.map(campaign => campaign.name).join(" · ") || "Not linked to a campaign yet",
+          linked_locations: locationLinks.length,
+        };
+      }).filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
+    }
+    if (section === "Campaign Locations") {
+      return base.map(location => {
+        const campaign = (rows.Campaigns || []).find(item => item.id === location.campaign_id);
+        const movie = (rows.Movies || []).find(item => item.id === campaign?.movie_id);
+        const venue = (rows.Venues || []).find(item => item.id === location.venue_id);
+        return { ...location, campaign_name: campaign?.name || "Unknown campaign", movie_title: movie?.title || "No movie linked", venue_name: venue ? venue.name + (venue.city ? " · " + venue.city : "") : "Map point only" };
+      }).filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
+    }
     if (section === "Movies") {
       return base.map(row => ({ ...row, client_name: (rows.Clients || []).find(client => client.id === row.client_id)?.name || "—" }))
         .filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
