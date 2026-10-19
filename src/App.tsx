@@ -520,7 +520,7 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
       <div><small>Recent activity records</small><b>{loading ? "—" : events.length}</b></div>
     </div>
     {!supportsConfiguredProgress && !loading && <div className="activity-task-warning"><ShieldCheck size={17}/><span>The database currently exposes the legacy task schema. Task creation works, but assigning a numeric activity category and counting distinct friends requires the numbered activity/task-engine migration.</span></div>}
-    {!supportsVerificationConfig && !loading && <div className="activity-task-warning"><ShieldCheck size={17}/><span>Verifier and UI settings are not available in the current database schema. Apply the configurable-task-verification migration before relying on these controls.</span></div>
+    {!supportsVerificationConfig && !loading && <div className="activity-task-warning"><ShieldCheck size={17}/><span>Verifier and UI settings are not available in the current database schema. Apply the configurable-task-verification migration before relying on these controls.</span></div>}
     <div className="activity-task-grid">
       <form className="panel activity-task-form" onSubmit={createCategory}>
         <h3><Activity size={17}/> Create activity category</h3>
