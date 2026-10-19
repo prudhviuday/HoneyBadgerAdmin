@@ -143,7 +143,7 @@ export default function App() {
     e.preventDefault();
     if (!db) return;
     const table = sections.find(s => s.name === section)?.table;
-    if (!table || !["Movies", "Clients", "Campaigns", "Venues"].includes(section)) return;
+    if (!table || !["Movies", "Clients", "Campaigns", "Venues", "Campaign Locations"].includes(section)) return;
 
     const payload: RecordRow = { ...draft };
     const emptyToNull = (value: unknown) => String(value ?? "").trim() || null;
@@ -184,7 +184,34 @@ export default function App() {
       payload.venue_type ||= "shop";
       payload.city ||= "Chennai";
       payload.state ||= "Tamil Nadu";
-      optionalFields(payload, ["address"]);
+      optionalFields(payload, ["address", "pincode", "contact_person", "phone", "email", "notes"]);
+    }
+    if (section === "Campaign Locations") {
+      payload.name = String(payload.name || "").trim();
+      payload.category = String(payload.category || "").trim();
+      if (!payload.name) { setError("Enter a name for this campaign map location."); return; }
+      if (!payload.campaign_id || !(rows.Campaigns || []).some(campaign => campaign.id === payload.campaign_id)) {
+        setError("Choose an existing campaign; its linked movie will be shown automatically."); return;
+      }
+      if (!payload.category) { setError("Choose a location category."); return; }
+      if (String(payload.latitude ?? "").trim() === "" || String(payload.longitude ?? "").trim() === "") {
+        setError("Latitude and longitude are required for a campaign map location."); return;
+      }
+      const latitude = Number(payload.latitude), longitude = Number(payload.longitude);
+      const locationPoints = Number(payload.points ?? 0);
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+        setError("Enter valid coordinates: latitude from -90 to 90 and longitude from -180 to 180."); return;
+      }
+      if (!Number.isInteger(locationPoints) || locationPoints < 0) {
+        setError("Location points must be a non-negative whole number."); return;
+      }
+      payload.latitude = latitude;
+      payload.longitude = longitude;
+      payload.points = locationPoints;
+      payload.venue_id = emptyToNull(payload.venue_id);
+      payload.description = emptyToNull(payload.description);
+      payload.address = emptyToNull(payload.address);
+      payload.is_active = payload.is_active !== false;
     }
 
     const selectedTaskKeys = section === "Campaigns" && Array.isArray(payload.selected_task_keys) ? payload.selected_task_keys as string[] : [];
@@ -236,7 +263,8 @@ export default function App() {
       } else {
         const { error: insertError } = await db.from(table).insert(payload);
         if (insertError) throw new Error("Could not create record: " + insertError.message);
-        setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
+        if (section === "Campaign Locations") setNotice("Campaign location created and attached to the selected campaign and map. The linked movie is derived from that campaign.");
+        else setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
       }
       setShowAdd(false); setDraft({}); await loadData();
     } catch (e: any) {
