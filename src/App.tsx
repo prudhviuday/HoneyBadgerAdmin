@@ -36,6 +36,22 @@ const columns: Record<string, string[]> = {
   Invoices: ["invoice_number", "client_name", "campaign_name", "issue_date", "due_date", "total_amount", "status"],
   Expenses: ["campaign_name", "category", "description", "vendor", "expense_date", "amount"],
 };
+const TABLE_DEPENDENCIES: Record<Section, string[]> = {
+  Overview: ["Movies", "Clients"],
+  Movies: ["Movies", "Clients"],
+  Clients: ["Clients"],
+  Campaigns: ["Campaigns", "Movies", "Clients", "Venues", "Campaign Locations"],
+  "Events & Hunts": ["Events & Hunts", "Campaigns"],
+  Venues: ["Venues", "Campaign Locations", "Campaigns", "Movies", "QR Manager"],
+  "Campaign Locations": ["Campaign Locations", "Campaigns", "Movies", "Venues"],
+  "QR Manager": ["QR Manager", "Campaigns", "Movies", "Venues", "Campaign Locations", "Events & Hunts"],
+  Activations: ["Activations", "Campaigns", "Venues"],
+  Leads: ["Leads", "Campaigns", "Activations"],
+  Invoices: ["Invoices", "Clients", "Campaigns"],
+  Expenses: ["Expenses", "Campaigns"],
+  "User Activity": [],
+  "Activity & Tasks": ["Campaigns"],
+};
 const DATA_COLUMNS: Record<string, string> = {
   Movies: "id,title,client_id,language,release_date,poster_url,trailer_url,active,notes,created_at",
   Clients: "id,name,contact_person,phone,email,address,city,state,notes,status,active,created_at",
@@ -94,6 +110,9 @@ export default function App() {
   const [loadWarning, setLoadWarning] = useState("");
   const [lookupLoaded, setLookupLoaded] = useState({ qr: false, categories: false });
   const [venueCoordinatesAvailable, setVenueCoordinatesAvailable] = useState(false);
+  const [loadedTables, setLoadedTables] = useState<Record<string, boolean>>({});
+  const [rowCounts, setRowCounts] = useState<Record<string, number>>({});
+  const [countsLoaded, setCountsLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,57 +148,89 @@ export default function App() {
       if (cancelled) return;
       if (authError) setError("Admin verification failed: " + authError.message);
       else if (data !== true) { setError("This account does not have administrator access."); await db.auth.signOut(); }
-      else { setIsAdmin(true); await loadData(db); }
+      else { setIsAdmin(true); }
       if (!cancelled) setBusy(false);
     })();
     return () => { cancelled = true; };
   }, [db, session]);
 
-  async function loadData(client = db) {
+  async function loadData(client = db, force = true) {
     if (!client) return;
-    // Venue coordinates are an additive migration. Detect it first so this UI continues
-    // to work against the current production schema while the migration is pending.
-    const venueCoordinateProbe = await client.from("venues").select("latitude,longitude").limit(1);
-    const supportsVenueCoordinates = !venueCoordinateProbe.error;
-    setVenueCoordinatesAvailable(supportsVenueCoordinates);
+    const requiredNames = TABLE_DEPENDENCIES[section] || [];
+    const namesToLoad = requiredNames.filter(name => force || !loadedTables[name]);
+    const needsVenues = namesToLoad.includes("Venues");
+    let supportsVenueCoordinates = venueCoordinatesAvailable;
+    if (needsVenues) {
+      // Venue coordinates are an additive migration. Detect it so the UI remains usable
+      // against the current production schema while that migration is pending.
+      const probe = await client.from("venues").select("latitude,longitude").limit(1);
+      supportsVenueCoordinates = !probe.error;
+      setVenueCoordinatesAvailable(supportsVenueCoordinates);
+    }
+
     const pageSize = 500;
-    const results = await Promise.all(sections.filter(s => s.table).map(async s => {
+    const dataPromise = Promise.all(namesToLoad.map(async name => {
+      const sectionInfo = sections.find(item => item.name === name && item.table);
+      if (!sectionInfo?.table) return { name, data: [] as RecordRow[], count: null as number | null, error: new Error("No table mapping exists.") };
       const allRows: RecordRow[] = [];
-      const baseColumns = DATA_COLUMNS[s.name] || "*";
-      const selection = s.name === "Venues" && !supportsVenueCoordinates
+      const baseColumns = DATA_COLUMNS[name] || "*";
+      const selection = name === "Venues" && !supportsVenueCoordinates
         ? baseColumns.replace(",latitude,longitude", "")
         : baseColumns;
+      let count: number | null = null;
       for (let offset = 0; ; offset += pageSize) {
-        const { data, error } = await client.from(s.table!)
-          .select(selection)
+        const { data, error, count: pageCount } = await client.from(sectionInfo.table)
+          .select(selection, { count: "exact" })
           .order("id", { ascending: true })
           .range(offset, offset + pageSize - 1);
-        if (error) return { name: s.name, data: allRows, error };
+        if (error) return { name, data: allRows, count, error };
+        if (offset === 0) count = pageCount ?? 0;
         const page = (data || []) as RecordRow[];
         allRows.push(...page);
         if (page.length < pageSize) break;
       }
-      return { name: s.name, data: allRows, error: null };
+      return { name, data: allRows, count: count ?? allRows.length, error: null };
     }));
 
+    const countPromise = countsLoaded ? Promise.resolve(null) : Promise.all(
+      sections.filter(item => item.table).map(async item => {
+        const { count, error } = await client.from(item.table!).select("id", { count: "exact", head: true });
+        return { name: item.name, count: count ?? 0, error };
+      })
+    );
+    if (!countsLoaded) setCountsLoaded(true);
+    const [results, countResults] = await Promise.all([dataPromise, countPromise]);
     const failed = results.filter(result => result.error);
     const next: Record<string, RecordRow[]> = {};
-    results.forEach(result => { if (!result.error) next[result.name] = result.data; });
+    const nextLoaded: Record<string, boolean> = {};
+    const nextCounts: Record<string, number> = {};
+    results.forEach(result => {
+      if (!result.error) {
+        next[result.name] = result.data;
+        nextLoaded[result.name] = true;
+        if (result.count != null) nextCounts[result.name] = result.count;
+      }
+    });
+    if (countResults) countResults.forEach(result => {
+      if (!result.error) nextCounts[result.name] = result.count;
+    });
     if (failed.length) {
-      setLoadWarning("Some admin data could not be loaded (" + failed.map(result => result.name + ": " + result.error.message).join("; ") + "). The last successful data is retained where available. Use Refresh after checking permissions or schema.");
+      setLoadWarning("Some admin data could not be loaded (" + failed.map(result => result.name + ": " + result.error.message).join("; ") + "). The last successful data is retained where available. Refresh after checking permissions or schema.");
     } else {
       setLoadWarning("");
     }
     setRows(current => ({ ...current, ...next }));
+    setLoadedTables(current => ({ ...current, ...nextLoaded }));
+    setRowCounts(current => ({ ...current, ...nextCounts }));
 
-    const missionRows = results.find(result => result.name === "Events & Hunts")?.data || [];
+    const missionRows = results.find(result => result.name === "Events & Hunts")?.data || rows["Events & Hunts"] || [];
     if (missionRows.length) {
       const keys = new Set(Object.keys(missionRows[0]));
       setTaskSchema({
         progress: keys.has("progress_event_type_id") && keys.has("progress_mode"),
         verification: keys.has("verification_action") && keys.has("verification_config") && keys.has("ui_component") && keys.has("ui_config"),
       });
-    } else {
+    } else if (namesToLoad.includes("Events & Hunts")) {
       const [progressProbe, verificationProbe] = await Promise.all([
         client.from("missions").select("progress_event_type_id,progress_mode").limit(1),
         client.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
@@ -187,7 +238,6 @@ export default function App() {
       setTaskSchema({ progress: !progressProbe.error, verification: !verificationProbe.error });
     }
   }
-
   async function loadQrLookups(client = db, force = false) {
     if (!client || (lookupLoaded.qr && !force)) return;
     const [sourceResult, profileResult] = await Promise.all([
@@ -221,6 +271,7 @@ export default function App() {
 
   useEffect(() => {
     if (!db || !isAdmin) return;
+    void loadData(db, false);
     if (section === "QR Manager") void loadQrLookups(db);
     if (section === "Campaigns") void loadActivityCategories(db);
   }, [db, isAdmin, section]);
@@ -671,7 +722,7 @@ export default function App() {
       return true;
     });
   }, [rows, section, search, qrFilters]);
-  const total = (name: string) => (rows[name] || []).length;
+  const total = (name: string) => loadedTables[name] ? (rows[name] || []).length : (rowCounts[name] ?? 0);
   const mismatchedQrRecords = (rows["QR Manager"] || []).filter(qr => {
     const source = (rows["QR Sources"] || []).find(item => String(item.id) === String(qr.interaction_source_id));
     return source && String(source.campaign_id) !== String(qr.campaign_id);
