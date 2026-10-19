@@ -5,7 +5,7 @@ import "./styles.css";
 
 type Config = { url?: string; anonKey?: string };
 type RecordRow = Record<string, any>;
-type Section = "Overview" | "Movies" | "Clients" | "Campaigns" | "Events & Hunts" | "Venues" | "QR Manager" | "User Activity" | "Activity & Tasks";
+type Section = "Overview" | "Movies" | "Clients" | "Campaigns" | "Events & Hunts" | "Venues" | "Campaign Locations" | "QR Manager" | "User Activity" | "Activity & Tasks";
 const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Overview", icon: LayoutDashboard },
   { name: "Movies", icon: Film, table: "movies" },
@@ -13,6 +13,7 @@ const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Campaigns", icon: Activity, table: "campaigns" },
   { name: "Events & Hunts", icon: CalendarDays, table: "missions" },
   { name: "Venues", icon: Building2, table: "venues" },
+  { name: "Campaign Locations", icon: MapPin, table: "locations" },
   { name: "QR Manager", icon: QrCode, table: "qr_codes" },
   { name: "User Activity", icon: UserRound },
   { name: "Activity & Tasks", icon: ListChecks },
@@ -22,10 +23,12 @@ const columns: Record<string, string[]> = {
   Clients: ["name", "contact_person", "phone", "email", "active"],
   Campaigns: ["name", "movie_title", "client_name", "active"],
   "Events & Hunts": ["name", "mission_type", "reward_points", "is_active"],
-  Venues: ["name", "venue_type", "city", "state", "active"],
+  Venues: ["name", "venue_type", "city", "state", "linked_movies", "linked_campaigns", "linked_locations", "active"],
+  "Campaign Locations": ["name", "category", "campaign_name", "movie_title", "venue_name", "latitude", "longitude", "points", "is_active"],
   "QR Manager": ["display_name", "short_code", "purpose", "campaign_name", "venue_name", "use_count", "is_active"],
 };
 const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+const LOCATION_CATEGORIES = ["neighborhood", "shopping", "mall", "transport", "business", "public", "beach", "industrial", "transit", "college", "cafe", "theatre", "activation", "other"];
 
 type CampaignTaskTemplate = {
   key: string; name: string; description: string; mission_type: string;
