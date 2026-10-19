@@ -113,6 +113,7 @@ export default function App() {
   const [loadWarning, setLoadWarning] = useState("");
   const [lookupLoaded, setLookupLoaded] = useState({ qr: false, categories: false });
   const [venueCoordinatesAvailable, setVenueCoordinatesAvailable] = useState(false);
+  const [moviePosterGalleryAvailable, setMoviePosterGalleryAvailable] = useState(false);
   const [loadedTables, setLoadedTables] = useState<Record<string, boolean>>({});
   const [rowCounts, setRowCounts] = useState<Record<string, number>>({});
   const [countsLoaded, setCountsLoaded] = useState(false);
@@ -171,6 +172,15 @@ export default function App() {
       setVenueCoordinatesAvailable(supportsVenueCoordinates);
     }
 
+    let supportsMoviePosterGallery = moviePosterGalleryAvailable;
+    if (namesToLoad.includes("Movies")) {
+      // The poster gallery column is an additive migration. Keep the Movies panel usable
+      // against older production schemas while the migration is pending.
+      const probe = await client.from("movies").select("poster_urls").limit(1);
+      supportsMoviePosterGallery = !probe.error;
+      setMoviePosterGalleryAvailable(supportsMoviePosterGallery);
+    }
+
     const pageSize = 500;
     const dataPromise = Promise.all(namesToLoad.map(async name => {
       const sectionInfo = sections.find(item => item.name === name && item.table);
@@ -179,7 +189,9 @@ export default function App() {
       const baseColumns = DATA_COLUMNS[name] || "*";
       const selection = name === "Venues" && !supportsVenueCoordinates
         ? baseColumns.replace(",latitude,longitude", "")
-        : baseColumns;
+        : name === "Movies" && !supportsMoviePosterGallery
+          ? baseColumns.replace(",poster_urls", "")
+          : baseColumns;
       let count: number | null = null;
       for (let offset = 0; ; offset += pageSize) {
         const { data, error, count: pageCount } = await client.from(sectionInfo.table)
@@ -305,8 +317,14 @@ export default function App() {
       const posterUrls = Array.isArray(payload.poster_urls)
         ? payload.poster_urls.map((url: unknown) => String(url ?? "").trim()).filter(Boolean)
         : [String(payload.poster_url ?? "").trim()].filter(Boolean);
-      payload.poster_urls = Array.from(new Set(posterUrls));
-      payload.poster_url = payload.poster_urls[0] || null;
+      const uniquePosterUrls = Array.from(new Set(posterUrls));
+      if (!moviePosterGalleryAvailable && uniquePosterUrls.length > 1) {
+        setError("Multiple posters are not enabled in the connected database yet. Apply supabase/migrations/20261019203500_add_movie_poster_gallery.sql, refresh, then save the gallery. One poster can still be saved now.");
+        return;
+      }
+      payload.poster_url = uniquePosterUrls[0] || null;
+      if (moviePosterGalleryAvailable) payload.poster_urls = uniquePosterUrls;
+      else delete payload.poster_urls;
       optionalFields(payload, ["language", "release_date", "trailer_url", "notes"]);
       payload.active = payload.active !== false;
     }
@@ -1034,6 +1052,7 @@ export default function App() {
         </>}
         <div className="form-actions"><button type="button" className="secondary" onClick={() => { if (section === "Campaign Locations" && returnToCampaignId) { setEditingLocationId(null); setEditingRecordId(null); setDraft({ name: "", campaign_id: returnToCampaignId, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true }); setError(""); setNotice("Unsaved location details cleared. You can continue adding pins or finish."); return; } const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null; setShowAdd(false); setEditingLocationId(null); setEditingRecordId(null); setDraft({}); setReturnToCampaignId(null); setLocationPickerSearch(""); if (backToCampaignId) { const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId); if (campaign) { setSection("Campaigns"); setEditingRecordId(campaign.id); setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true); } } }}>{returnToCampaignId ? "Clear draft" : "Cancel"}</button>{returnToCampaignId && section === "Campaign Locations" && !editingLocationId && <><button type="submit" className="secondary" data-location-save-mode="another" disabled={busy}>{busy ? "Saving…" : "Save & add another"}</button><button type="button" className="secondary" disabled={busy} onClick={() => finishLocationFlow(true)}>Finish without saving</button></>}{returnToCampaignId && section === "Campaign Locations" && editingLocationId && <button type="button" className="secondary" disabled={busy} onClick={() => finishLocationFlow(true)}>Cancel edit & return to movie</button>}<button className="button" data-location-save-mode="finish" disabled={busy || (section === "Campaigns" && !(rows.Movies || []).length) || (section === "Campaign Locations" && !(rows.Campaigns || []).length)}>{busy ? "Saving…" : editingLocationId || editingRecordId ? "Save changes" : section === "Campaigns" ? "Create campaign + tasks" : section === "Campaign Locations" ? returnToCampaignId ? "Save location & return to movie" : "Add campaign location" : "Create record"}</button></div>
       </form>}
+      {section === "Movies" && loadedTables.Movies && !moviePosterGalleryAvailable && <div className="activity-task-warning"><ShieldCheck size={17}/><span>The connected database does not yet expose the movie poster gallery column. Movie records and one primary poster remain editable; apply <code>supabase/migrations/20261019203500_add_movie_poster_gallery.sql</code> to save multiple posters.</span></div>}
       <div className="toolbar"><div className="search"><Search size={16}/><input placeholder={section === "QR Manager" ? "Search by QR name, code, venue, purpose…" : "Search " + section.toLowerCase()} value={search} onChange={e => setSearch(e.target.value)}/></div><span>{visibleRows.length} records</span></div>
       {section === "QR Manager" && mismatchedQrRecords.length > 0 && <div className="error" role="status">{mismatchedQrRecords.length} saved QR code(s) currently reference an interaction source from a different campaign. Existing records were not changed automatically. Open each QR and select a source belonging to its campaign.</div>}
       {section === "QR Manager" && selectedQr && <form className="qr-editor" onSubmit={saveQr}>
