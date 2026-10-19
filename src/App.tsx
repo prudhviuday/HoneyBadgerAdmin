@@ -63,6 +63,8 @@ export default function App() {
   const [draft, setDraft] = useState<RecordRow>({});
   const [selectedQr, setSelectedQr] = useState<RecordRow | null>(null);
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+  const [returnToCampaignId, setReturnToCampaignId] = useState<string | null>(null);
   const [qrDraft, setQrDraft] = useState<RecordRow>({});
   const [qrFilters, setQrFilters] = useState({ purpose: "", campaign_id: "", venue_id: "", is_active: "" });
   const [taskSchema, setTaskSchema] = useState({ progress: false, verification: false });
@@ -289,7 +291,7 @@ export default function App() {
         const locationLinks = (rows["Campaign Locations"] || []).filter(location => location.venue_id === venue.id);
         const qrLinks = (rows["QR Manager"] || []).filter(qr => qr.venue_id === venue.id && qr.campaign_id);
         const campaignIds = Array.from(new Set([...locationLinks.map(location => location.campaign_id), ...qrLinks.map(qr => qr.campaign_id)].filter(Boolean)));
-        const linkedCampaigns = campaignIds.map(id => (rows.Campaigns || []).find(campaign => campaign.id === id)).filter(Boolean);
+        const linkedCampaigns = campaignIds.map(id => (rows.Campaigns || []).find(campaign => campaign.id === id)).filter((campaign): campaign is RecordRow => Boolean(campaign));
         const movieTitles = Array.from(new Set(linkedCampaigns.map(campaign => (rows.Movies || []).find(movie => movie.id === campaign.movie_id)?.title).filter(Boolean)));
         return {
           ...venue,
@@ -342,8 +344,25 @@ export default function App() {
   }, [rows, section, search, qrFilters]);
   const total = (name: string) => (rows[name] || []).length;
 
+  function openRecordEditor(row: RecordRow) {
+    const raw = (rows[section] || []).find(item => item.id === row.id) || row;
+    setEditingRecordId(raw.id);
+    setEditingLocationId(null);
+    setReturnToCampaignId(null);
+    if (section === "Campaigns") {
+      setDraft({ ...raw, selected_task_keys: [], task_points: {} });
+    } else {
+      setDraft({ ...raw });
+    }
+    setError("");
+    setNotice("");
+    setShowAdd(true);
+    window.setTimeout(() => document.querySelector(".add-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
   function openLocationEditor(row: RecordRow) {
     const raw = (rows["Campaign Locations"] || []).find(item => item.id === row.id) || row;
+    setEditingRecordId(null);
     setEditingLocationId(raw.id);
     setDraft({
       ...raw,
