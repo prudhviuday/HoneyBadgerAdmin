@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { Activity, Building2, Clapperboard, Film, LayoutDashboard, LogOut, Plus, QrCode, RefreshCw, CalendarDays, Search, ShieldCheck, Copy, ExternalLink, X, Save, UserRound, Phone, Mail, Clock3, ListChecks, ClipboardList, MapPin } from "lucide-react";
 import "./styles.css";
+import { ActivityTasksPanel, UserActivityPanel } from "./AdminPanels";
 
 type Config = { url?: string; anonKey?: string };
 type RecordRow = Record<string, any>;
@@ -23,9 +24,18 @@ const columns: Record<string, string[]> = {
   Clients: ["name", "contact_person", "phone", "email", "active"],
   Campaigns: ["name", "movie_title", "client_name", "active"],
   "Events & Hunts": ["name", "mission_type", "reward_points", "is_active"],
-  Venues: ["name", "venue_type", "city", "state", "linked_movies", "linked_campaigns", "linked_locations", "active"],
+  Venues: ["name", "venue_type", "city", "state", "coordinates", "linked_movies", "linked_campaigns", "linked_locations", "active"],
   "Campaign Locations": ["name", "category", "campaign_name", "movie_title", "venue_name", "latitude", "longitude", "points", "is_active"],
   "QR Manager": ["display_name", "short_code", "purpose", "campaign_name", "venue_name", "use_count", "is_active"],
+};
+const DATA_COLUMNS: Record<string, string> = {
+  Movies: "id,title,client_id,language,release_date,poster_url,trailer_url,active,notes,created_at",
+  Clients: "id,name,contact_person,phone,email,address,city,state,notes,status,active,created_at",
+  Campaigns: "id,name,media_url,terms_url,active,created_at,client_id,movie_id",
+  Venues: "id,name,address,city,state,pincode,venue_type,contact_person,phone,email,active,notes,created_at,latitude,longitude",
+  "Campaign Locations": "id,campaign_id,name,category,description,latitude,longitude,address,points,is_active,created_at,venue_id",
+  "QR Manager": "id,campaign_id,interaction_source_id,qr_type,is_active,starts_at,expires_at,max_uses,use_count,created_at,purpose,public_code,venue_id,inviter_user_id,referral_code,hunt_id,display_name,short_code",
+  "Events & Hunts": "*",
 };
 const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
 const LOCATION_CATEGORIES = ["neighborhood", "shopping", "mall", "transport", "business", "public", "beach", "industrial", "transit", "college", "cafe", "theatre", "activation", "other"];
@@ -69,6 +79,8 @@ export default function App() {
   const [qrDraft, setQrDraft] = useState<RecordRow>({});
   const [qrFilters, setQrFilters] = useState({ purpose: "", campaign_id: "", venue_id: "", is_active: "" });
   const [taskSchema, setTaskSchema] = useState({ progress: false, verification: false });
+  const [loadWarning, setLoadWarning] = useState("");
+  const [lookupLoaded, setLookupLoaded] = useState({ qr: false, categories: false });
 
   useEffect(() => {
     let cancelled = false;
@@ -112,29 +124,84 @@ export default function App() {
 
   async function loadData(client = db) {
     if (!client) return;
+    const pageSize = 500;
     const results = await Promise.all(sections.filter(s => s.table).map(async s => {
-      const { data, error } = await client.from(s.table!).select("*").limit(500);
-      return { name: s.name, data: data || [], error };
+      const allRows: RecordRow[] = [];
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await client.from(s.table!)
+          .select(DATA_COLUMNS[s.name] || "*")
+          .order("id", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (error) return { name: s.name, data: allRows, error };
+        const page = (data || []) as RecordRow[];
+        allRows.push(...page);
+        if (page.length < pageSize) break;
+      }
+      return { name: s.name, data: allRows, error: null };
     }));
-    const [sourceResult, profileResult, categoryResult, progressProbe, verificationProbe] = await Promise.all([
-      client.from("interaction_sources").select("id,name,source_type,points,reward_entries,campaign_id,is_active").limit(1000),
-      client.from("profiles").select("user_id,display_name").limit(1000),
-      client.from("activity_event_types").select("id,code,description,is_important").limit(1000),
-      client.from("missions").select("progress_event_type_id,progress_mode").limit(1),
-      client.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
-    ]);
+
+    const failed = results.filter(result => result.error);
     const next: Record<string, RecordRow[]> = {};
-    results.forEach(r => { if (r.error) console.warn("Could not load " + r.name, r.error); next[r.name] = r.data; });
-    if (sourceResult.error) console.warn("Could not load QR interaction sources", sourceResult.error);
-    if (profileResult.error) console.warn("Could not load QR user profiles", profileResult.error);
-    if (categoryResult.error) console.warn("Could not load activity event types", categoryResult.error);
-    next["QR Sources"] = sourceResult.data || [];
-    next["QR Profiles"] = profileResult.data || [];
-    next["Activity Categories"] = categoryResult.data || [];
-    setTaskSchema({ progress: !progressProbe.error, verification: !verificationProbe.error });
-    setRows(next);
+    results.forEach(result => { if (!result.error) next[result.name] = result.data; });
+    if (failed.length) {
+      setLoadWarning("Some admin data could not be loaded (" + failed.map(result => result.name + ": " + result.error.message).join("; ") + "). The last successful data is retained where available. Use Refresh after checking permissions or schema.");
+    } else {
+      setLoadWarning("");
+    }
+    setRows(current => ({ ...current, ...next }));
+
+    const missionRows = results.find(result => result.name === "Events & Hunts")?.data || [];
+    if (missionRows.length) {
+      const keys = new Set(Object.keys(missionRows[0]));
+      setTaskSchema({
+        progress: keys.has("progress_event_type_id") && keys.has("progress_mode"),
+        verification: keys.has("verification_action") && keys.has("verification_config") && keys.has("ui_component") && keys.has("ui_config"),
+      });
+    } else {
+      const [progressProbe, verificationProbe] = await Promise.all([
+        client.from("missions").select("progress_event_type_id,progress_mode").limit(1),
+        client.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
+      ]);
+      setTaskSchema({ progress: !progressProbe.error, verification: !verificationProbe.error });
+    }
   }
 
+  async function loadQrLookups(client = db) {
+    if (!client || lookupLoaded.qr) return;
+    const [sourceResult, profileResult] = await Promise.all([
+      client.from("interaction_sources").select("id,name,source_type,points,reward_entries,campaign_id,is_active,location_id").order("name").limit(1000),
+      client.from("profiles").select("user_id,display_name").order("display_name").limit(1000),
+    ]);
+    const errors = [
+      sourceResult.error ? "interaction sources: " + sourceResult.error.message : "",
+      profileResult.error ? "user profiles: " + profileResult.error.message : "",
+    ].filter(Boolean);
+    if (errors.length) setLoadWarning("QR lookups could not fully load (" + errors.join("; ") + "). Refresh the QR panel after checking permissions.");
+    setRows(current => ({
+      ...current,
+      ...(sourceResult.error ? {} : { "QR Sources": sourceResult.data || [] }),
+      ...(profileResult.error ? {} : { "QR Profiles": profileResult.data || [] }),
+    }));
+    if (!sourceResult.error && !profileResult.error) setLookupLoaded(current => ({ ...current, qr: true }));
+  }
+
+  async function loadActivityCategories(client = db) {
+    if (!client || lookupLoaded.categories) return;
+    const { data, error: categoryError } = await client.from("activity_event_types")
+      .select("id,code,description,is_important").order("id").limit(1000);
+    if (categoryError) {
+      setLoadWarning("Activity categories could not be loaded: " + categoryError.message + ". Refresh the Campaigns panel after checking permissions.");
+      return;
+    }
+    setRows(current => ({ ...current, "Activity Categories": data || [] }));
+    setLookupLoaded(current => ({ ...current, categories: true }));
+  }
+
+  useEffect(() => {
+    if (!db || !isAdmin) return;
+    if (section === "QR Manager") void loadQrLookups(db);
+    if (section === "Campaigns") void loadActivityCategories(db);
+  }, [db, isAdmin, section]);
   async function signIn(e: FormEvent) {
     e.preventDefault(); if (!db) return;
     setBusy(true); setError("");
@@ -568,11 +635,11 @@ export default function App() {
   if (!session || !isAdmin) return <div className="center"><form className="login-card" onSubmit={signIn}><div className="brand-icon"><Clapperboard/></div><p className="eyebrow">HONEYBADGER / CONTROL ROOM</p><h1>Admin sign in</h1><p>Sign in with an existing Supabase account that has administrator access.</p><label>Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label>{error && <div className="error">{error}</div>}<button className="button full" disabled={busy}>{busy ? "Checking…" : "Sign in securely"}</button><small><ShieldCheck size={14}/> Protected by Supabase Auth and admin-role verification</small></form></div>;
 
   return <div className="layout">
-    <aside className="sidebar"><div className="brand"><div className="brand-icon"><Clapperboard/></div><div><b>HONEYBADGER</b><small>ADMIN CONTROL ROOM</small></div></div><p className="eyebrow">WORKSPACE</p><nav>{sections.map(s => <button key={s.name} className={section === s.name ? "nav active" : "nav"} onClick={() => { setSection(s.name); setSearch(""); setShowAdd(false); setEditingRecordId(null); setEditingLocationId(null); setReturnToCampaignId(null); setDraft({}); }}><s.icon size={17}/>{s.name}{s.table && <span>{total(s.name)}</span>}</button>)}</nav><div className="side-bottom"><i/> Supabase connected <button title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></aside>
+    <aside className="sidebar"><div className="brand"><div className="brand-icon"><Clapperboard/></div><div><b>HONEYBADGER</b><small>ADMIN CONTROL ROOM</small></div></div><p className="eyebrow">WORKSPACE</p><nav>{sections.filter(s => s.name !== "Events & Hunts").map(s => <button key={s.name} className={section === s.name ? "nav active" : "nav"} onClick={() => { setSection(s.name); setSearch(""); setShowAdd(false); setEditingRecordId(null); setEditingLocationId(null); setReturnToCampaignId(null); setDraft({}); }}><s.icon size={17}/>{s.name}{s.table && <span>{total(s.name)}</span>}</button>)}</nav><div className="side-bottom"><i/> Supabase connected <button title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></aside>
     <main><header className="topbar"><span>Workspace / <b>{section}</b></span><div><span className="live">● LIVE DATA</span><button className="icon-button" title="Refresh data" onClick={() => loadData()}><RefreshCw size={16}/></button><button className="icon-button" title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></header>
-      <div className="content"><div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>{section === "Campaign Locations" ? "Campaign-specific map pins store coordinates, category and points. Search and reuse an existing pin across campaigns instead of entering its details again." : section === "Venues" ? "Reusable physical place records—create each mall, college, shop or theatre once. Campaign Locations are separate campaign-specific map pins that can link to a venue." : ["Movies", "Campaigns", "Clients"].includes(section) ? "Click a row in the table to edit the saved record. Campaigns also let you add and edit their locations." : "Manage the same live data used by the Honeybadger app."}</p></div>{["Movies","Clients","Campaigns","Venues","Campaign Locations"].includes(section) && <button className="button" onClick={() => { setError(""); setNotice(""); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null); setLocationPickerSearch(""); setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true, client_id: "" } : section === "Clients" ? { name: "", active: true, status: "active" } : section === "Campaigns" ? { name: "", active: true, movie_id: "", client_id: "", selected_task_keys: [], task_points: {} } : section === "Campaign Locations" ? { name: "", campaign_id: "", category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(true); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section === "Campaign Locations" ? "campaign location" : section.slice(0,-1).toLowerCase()}</button>}</div>
+      <div className="content">{loadWarning && <div className="error" role="status">{loadWarning}</div>}<div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>{section === "Campaign Locations" ? "Campaign-specific map pins store coordinates, category and points. Search and reuse an existing pin across campaigns instead of entering its details again." : section === "Venues" ? "Reusable physical place records—create each mall, college, shop or theatre once. Campaign Locations are separate campaign-specific map pins that can link to a venue." : ["Movies", "Campaigns", "Clients"].includes(section) ? "Click a row in the table to edit the saved record. Campaigns also let you add and edit their locations." : "Manage the same live data used by the Honeybadger app."}</p></div>{["Movies","Clients","Campaigns","Venues","Campaign Locations"].includes(section) && <button className="button" onClick={() => { setError(""); setNotice(""); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null); setLocationPickerSearch(""); setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true, client_id: "" } : section === "Clients" ? { name: "", active: true, status: "active" } : section === "Campaigns" ? { name: "", active: true, movie_id: "", client_id: "", selected_task_keys: [], task_points: {} } : section === "Campaign Locations" ? { name: "", campaign_id: "", category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(true); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section === "Campaign Locations" ? "campaign location" : section.slice(0,-1).toLowerCase()}</button>}</div>
       {error && <div className="error">{error}</div>}{notice && <div className="notice">{notice}</div>}
-      {section === "User Activity" ? <UserActivityPanel db={db} /> : section === "Activity & Tasks" ? <ActivityTasksPanel db={db} campaigns={rows.Campaigns || []} onRefresh={loadData} /> : section === "Overview" ? <><div className="hero"><span className="eyebrow">SYSTEM OVERVIEW</span><h2>Every campaign.<br/><em>One command centre.</em></h2><p>Manage movie records, campaigns, events, partner venues and QR codes connected to your production marketing.</p></div><div className="stats">{[{name:"Movies",icon:Film},{name:"Campaigns",icon:Activity},{name:"Events & Hunts",icon:CalendarDays},{name:"Venues",icon:Building2},{name:"Campaign Locations",icon:MapPin},{name:"QR Manager",icon:QrCode},{name:"Activity & Tasks",icon:ListChecks}].map(s=><button className="stat" key={s.name} onClick={() => setSection(s.name as Section)}><s.icon size={18}/><span>{s.name}</span><b>{total(s.name)}</b></button>)}</div><div className="panel"><h3>Recent movies</h3><DataTable rows={(rows.Movies || []).slice(0,8)} columns={columns.Movies}/></div></> : <>
+      {section === "User Activity" ? <UserActivityPanel db={db} /> : section === "Activity & Tasks" ? <ActivityTasksPanel db={db} campaigns={rows.Campaigns || []} onRefresh={loadData} /> : section === "Overview" ? <><div className="hero"><span className="eyebrow">SYSTEM OVERVIEW</span><h2>Every campaign.<br/><em>One command centre.</em></h2><p>Manage movie records, campaigns, events, partner venues and QR codes connected to your production marketing.</p></div><div className="stats">{[{name:"Movies",icon:Film},{name:"Campaigns",icon:Activity},{name:"Venues",icon:Building2},{name:"Campaign Locations",icon:MapPin},{name:"QR Manager",icon:QrCode},{name:"Activity & Tasks",icon:ListChecks}].map(s=><button className="stat" key={s.name} onClick={() => setSection(s.name as Section)}><s.icon size={18}/><span>{s.name}</span><b>{total(s.name)}</b></button>)}</div><div className="panel"><h3>Recent movies</h3><DataTable rows={(rows.Movies || []).slice(0,8)} columns={columns.Movies}/></div></> : <>
       {showAdd && <form className="add-form" onSubmit={addRecord}>
         <h3>{editingLocationId && section === "Campaign Locations" ? "Edit campaign location" : section === "Campaign Locations" ? "Add location to a campaign" : editingRecordId && section === "Movies" ? "Edit movie" : editingRecordId && section === "Clients" ? "Edit client / production company" : editingRecordId && section === "Campaigns" ? "Edit campaign" : editingRecordId && section === "Venues" ? "Edit venue" : section === "Venues" ? "New venue" : section === "Clients" ? "New client / production company" : section === "Campaigns" ? "New movie campaign" : "New movie"}</h3>
         {section === "Movies" && <>
