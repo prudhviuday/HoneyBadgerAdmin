@@ -145,3 +145,34 @@
 .activity-task-form-actions,.activity-task-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .activity-task-form-actions{grid-column:1/-1;margin-top:18px}
 .activity-task-actions{justify-content:flex-end}
+
+
+/* Guided movie, client and campaign setup */
+.form-intro{grid-column:1/-1;margin:0 0 5px;color:#a5a5ae;font-size:11px;line-height:1.6}
+.required-mark{justify-self:start;padding:2px 6px;border-radius:4px;background:#33251e;color:#ffad7d;font:9px 'DM Mono',monospace;text-transform:uppercase;letter-spacing:.5px}
+.field-help{display:block;color:#92939d;font-size:10px;line-height:1.6;margin:7px 0 0}
+.add-form .inline-check{display:flex;align-items:center;gap:9px;padding:12px 13px;border:1px solid #34353d;border-radius:7px;background:#202126;min-height:42px}
+.add-form .inline-check input{width:15px;height:15px;flex:none;margin:0;accent-color:var(--orange)}
+.add-form textarea{width:100%;padding:11px 12px;background:#101115;border:1px solid #383941;border-radius:7px;color:#eee;outline:none;resize:vertical}
+.add-form textarea:focus{border-color:var(--orange)}
+.campaign-task-picker{grid-column:1/-1;min-width:0;margin-top:18px;padding:16px;border:1px solid #383941;border-radius:10px;background:#15161a}
+.campaign-task-picker-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:13px}
+.campaign-task-picker-head h4{margin:0 0 5px;color:#f1f1f3;font:600 15px 'Space Grotesk'}
+.campaign-task-picker-head p{margin:0;color:#92939d;font-size:11px;line-height:1.6}
+.campaign-task-picker-head>span{flex:none;padding:5px 8px;border:1px solid #5b3a29;border-radius:6px;color:#ffae7e;font:10px 'DM Mono',monospace;white-space:nowrap}
+.campaign-task-list{display:grid;gap:8px}
+.campaign-task-choice{display:grid;grid-template-columns:minmax(0,1fr) 112px;align-items:center;gap:12px;padding:12px;border:1px solid #303139;border-radius:8px;background:#1b1c22}
+.campaign-task-choice.is-locked{opacity:.74;background:#18191e}
+.add-form .campaign-task-check{display:flex;align-items:flex-start;gap:10px;margin:0;min-width:0}
+.add-form .campaign-task-check input{width:15px;height:15px;flex:none;margin:3px 0 0;accent-color:var(--orange)}
+.campaign-task-copy{display:grid;gap:4px;min-width:0;color:#eee}
+.campaign-task-copy b{font-size:12px;color:#f1f1f3}
+.campaign-task-copy small{font-size:10px;line-height:1.5;color:#92939d}
+.campaign-task-copy .task-locked-note{color:#ffbd8e}
+.campaign-task-reward label{display:grid;gap:5px;margin:0;color:#a9aab2;font-size:10px}
+.add-form .campaign-task-reward input{padding:8px 9px}
+@media(max-width:650px){
+  .form-intro,.campaign-task-picker{grid-column:auto}
+  .campaign-task-picker-head{flex-direction:column}
+  .campaign-task-choice{grid-template-columns:minmax(0,1fr) 90px;gap:8px;padding:10px}
+}
