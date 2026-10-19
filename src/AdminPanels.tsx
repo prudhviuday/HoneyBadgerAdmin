@@ -532,3 +532,239 @@ export function UserActivityPanel({ db }: { db: SupabaseClient }) {
     </section>}
   </div>;
 }
+
+
+type CampaignLookup = { id: string; name: string };
+type ActivationLookup = { id: string; campaign_id: string; name: string; shop_code?: string; active?: boolean };
+type LeadRecord = {
+  id: string;
+  campaign_id: string;
+  activation_id: string | null;
+  name: string;
+  phone: string;
+  email: string | null;
+  verified_via: string;
+  consent_given: boolean;
+  consent_at: string | null;
+  created_at: string;
+};
+type LeadDraft = {
+  id?: string;
+  campaign_id: string;
+  activation_id: string;
+  name: string;
+  phone: string;
+  email: string;
+  verified_via: string;
+  consent_given: boolean;
+  consent_at: string | null;
+  created_at?: string;
+};
+const emptyLeadDraft = (): LeadDraft => ({
+  campaign_id: "", activation_id: "", name: "", phone: "", email: "",
+  verified_via: "manual", consent_given: false, consent_at: null,
+});
+
+function LeadManagementPanel({
+  db,
+  campaigns,
+  activations,
+}: {
+  db: SupabaseClient;
+  campaigns: CampaignLookup[];
+  activations: ActivationLookup[];
+}) {
+  const [leads, setLeads] = useState<LeadRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [draft, setDraft] = useState<LeadDraft | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function loadLeads() {
+    setLoading(true);
+    setError("");
+    const pageSize = 250;
+    const loaded: LeadRecord[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error: loadError } = await db
+        .from("leads")
+        .select("id,campaign_id,activation_id,name,phone,email,verified_via,consent_given,consent_at,created_at")
+        .order("created_at", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+      if (loadError) {
+        setError("Could not load campaign leads: " + loadError.message);
+        setLoading(false);
+        return;
+      }
+      const page = (data || []) as LeadRecord[];
+      loaded.push(...page);
+      if (page.length < pageSize) break;
+    }
+    setLeads(loaded);
+    setLoading(false);
+  }
+
+  useEffect(() => { void loadLeads(); }, [db]);
+
+  const visibleLeads = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return leads.map(lead => {
+      const campaign = campaigns.find(item => item.id === lead.campaign_id);
+      const activation = activations.find(item => item.id === lead.activation_id);
+      return { ...lead, campaign_name: campaign?.name || "Unknown campaign", activation_name: activation?.name || "—" };
+    }).filter(lead => !term || [
+      lead.name, lead.phone, lead.email, lead.campaign_name, lead.activation_name,
+      lead.verified_via, lead.consent_given ? "consented" : "no consent",
+    ].some(value => String(value || "").toLowerCase().includes(term)));
+  }, [leads, campaigns, activations, query]);
+
+  function startNewLead() {
+    setDraft({ ...emptyLeadDraft(), campaign_id: campaigns[0]?.id || "" });
+    setError("");
+    setNotice("");
+  }
+
+  function startEditLead(lead: LeadRecord) {
+    setDraft({
+      id: lead.id,
+      campaign_id: lead.campaign_id,
+      activation_id: lead.activation_id || "",
+      name: lead.name || "",
+      phone: lead.phone || "",
+      email: lead.email || "",
+      verified_via: lead.verified_via || "manual",
+      consent_given: lead.consent_given === true,
+      consent_at: lead.consent_at || null,
+      created_at: lead.created_at,
+    });
+    setError("");
+    setNotice("");
+  }
+
+  async function saveLead(event: FormEvent) {
+    event.preventDefault();
+    if (!draft) return;
+    const name = draft.name.trim();
+    const phone = draft.phone.trim();
+    if (!name || !phone || !draft.campaign_id) {
+      setError("Lead name, phone number and campaign are required.");
+      return;
+    }
+    if (!draft.id && !draft.consent_given) {
+      setError("Confirm permission to retain this person's contact details before creating a new lead.");
+      return;
+    }
+    if (draft.activation_id) {
+      const selectedActivation = activations.find(item => item.id === draft.activation_id);
+      if (!selectedActivation || selectedActivation.campaign_id !== draft.campaign_id) {
+        setError("Choose an activation that belongs to the selected campaign.");
+        return;
+      }
+    }
+
+    const now = new Date().toISOString();
+    const payload = {
+      name,
+      phone,
+      email: draft.email.trim() || null,
+      campaign_id: draft.campaign_id,
+      activation_id: draft.activation_id || null,
+      verified_via: draft.verified_via.trim() || "manual",
+      consent_given: draft.consent_given === true,
+      // Preserve the original timestamp when a previously consented lead changes state;
+      // record a new timestamp when consent is first given.
+      consent_at: draft.consent_given ? (draft.consent_at || now) : draft.consent_at,
+    };
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      if (draft.id) {
+        const { data, error: updateError } = await db.from("leads")
+          .update(payload).eq("id", draft.id)
+          .select("id,campaign_id,activation_id,name,phone,email,verified_via,consent_given,consent_at,created_at")
+          .single();
+        if (updateError) throw updateError;
+        setLeads(current => current.map(item => item.id === draft.id ? data as LeadRecord : item));
+        setNotice("Lead details updated.");
+      } else {
+        const { data, error: insertError } = await db.from("leads")
+          .insert(payload)
+          .select("id,campaign_id,activation_id,name,phone,email,verified_via,consent_given,consent_at,created_at")
+          .single();
+        if (insertError) throw insertError;
+        setLeads(current => [data as LeadRecord, ...current]);
+        setNotice("Lead created.");
+      }
+      setDraft(null);
+    } catch (e: any) {
+      setError("Could not save lead: " + (e?.message || "Check admin permissions and try again."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="user-leads-page">
+    <div className="page-title">
+      <div><p className="eyebrow">USERS / CAMPAIGN CONTACTS</p><h1>Campaign leads</h1><p>Contacts collected through marketing campaigns. These are not the same as registered Honeybadger app accounts; use the App users tab for activity and location history.</p></div>
+      <div className="user-activity-icon"><ClipboardList size={21}/></div>
+    </div>
+    {error && <div className="error" role="status">{error}</div>}
+    {notice && <div className="notice" role="status">{notice}</div>}
+    <div className="lead-admin-toolbar">
+      <label className="lead-admin-search"><Search size={16}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, phone, email, campaign…"/></label>
+      <span className="lead-admin-count">{visibleLeads.length} of {leads.length} lead{leads.length === 1 ? "" : "s"}</span>
+      <button type="button" className="secondary" onClick={() => void loadLeads()} disabled={loading || saving}><RefreshCw size={14}/> Refresh</button>
+      <button type="button" className="button" onClick={startNewLead} disabled={!campaigns.length || saving}><Plus size={15}/> Add lead</button>
+    </div>
+    {!campaigns.length && <div className="user-empty">Create a campaign before adding leads.</div>}
+    {draft && <form className="lead-admin-form" onSubmit={saveLead}>
+      <div className="lead-admin-form-head"><div><h2>{draft.id ? "Edit lead" : "New campaign lead"}</h2><p>Only store contact details when there is an appropriate permission or lawful basis.</p></div><button type="button" className="icon-button" title="Close lead form" onClick={() => { setDraft(null); setError(""); }}><X size={17}/></button></div>
+      <div className="lead-admin-form-grid">
+        <label>Name <span className="required-mark">Required</span><input required maxLength={180} value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="Full name"/></label>
+        <label>Phone number <span className="required-mark">Required</span><input required type="tel" maxLength={50} value={draft.phone} onChange={e => setDraft({ ...draft, phone: e.target.value })} placeholder="Contact number"/></label>
+        <label>Email <input type="email" maxLength={254} value={draft.email} onChange={e => setDraft({ ...draft, email: e.target.value })} placeholder="Optional"/></label>
+        <label>Campaign <span className="required-mark">Required</span><select required value={draft.campaign_id} onChange={e => {
+          const campaignId = e.target.value;
+          const currentActivation = activations.find(item => item.id === draft.activation_id);
+          setDraft({ ...draft, campaign_id: campaignId, activation_id: currentActivation?.campaign_id === campaignId ? draft.activation_id : "" });
+        }}><option value="">Choose campaign…</option>{campaigns.map(campaign => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}</select></label>
+        <label>Activation (optional)<select value={draft.activation_id} onChange={e => setDraft({ ...draft, activation_id: e.target.value })}><option value="">No activation linked</option>{activations.filter(activation => !draft.campaign_id || activation.campaign_id === draft.campaign_id).map(activation => <option key={activation.id} value={activation.id}>{activation.name}{activation.shop_code ? " · " + activation.shop_code : ""}{activation.active === false ? " (inactive)" : ""}</option>)}</select></label>
+        <label>Verification method<select value={draft.verified_via} onChange={e => setDraft({ ...draft, verified_via: e.target.value })}>{["manual", "qr", "online", "import"].map(value => <option key={value} value={value}>{label(value)}</option>)}</select></label>
+      </div>
+      <label className="lead-admin-consent"><input type="checkbox" checked={draft.consent_given} onChange={e => setDraft({ ...draft, consent_given: e.target.checked })}/><span><b>Permission to retain contact details</b><small>Required to create a new lead. Existing consent history is preserved when editing a record.</small></span></label>
+      <div className="form-actions"><button type="button" className="secondary" onClick={() => { setDraft(null); setError(""); }} disabled={saving}>Cancel</button><button className="button" disabled={saving || !campaigns.length}>{saving ? "Saving…" : <><Save size={15}/>{draft.id ? "Save lead changes" : "Create lead"}</>}</button></div>
+    </form>}
+    {loading ? <div className="user-empty">Loading campaign leads…</div> : visibleLeads.length === 0 ? <div className="user-empty">{leads.length ? "No leads match this search." : "No campaign leads have been recorded yet."}</div> : <div className="lead-admin-table-wrap"><table className="lead-admin-table"><thead><tr><th>Lead</th><th>Campaign</th><th>Activation</th><th>Consent</th><th>Added</th><th></th></tr></thead><tbody>
+      {visibleLeads.map(lead => <tr key={lead.id}>
+        <td><div className="lead-table-name">{lead.name}</div><div className="lead-table-contact">{lead.phone}{lead.email ? " · " + lead.email : ""}</div></td>
+        <td>{lead.campaign_name}</td><td>{lead.activation_name}</td>
+        <td><span className={lead.consent_given ? "badge yes" : "badge"}>{lead.consent_given ? "Recorded" : "Not recorded"}</span></td>
+        <td><AdminDate value={lead.created_at}/></td>
+        <td><button type="button" className="secondary lead-edit-button" onClick={() => startEditLead(lead)}><Save size={13}/> Edit</button></td>
+      </tr>)}
+    </tbody></table></div>}
+  </div>;
+}
+
+export function UsersPanel({
+  db,
+  campaigns,
+  activations,
+}: {
+  db: SupabaseClient;
+  campaigns: CampaignLookup[];
+  activations: ActivationLookup[];
+}) {
+  const [activeTab, setActiveTab] = useState<"app-users" | "leads">("app-users");
+  return <div className="users-hub">
+    <div className="users-hub-tabs" role="tablist" aria-label="Users panel views">
+      <button type="button" role="tab" aria-selected={activeTab === "app-users"} className={activeTab === "app-users" ? "users-hub-tab active" : "users-hub-tab"} onClick={() => setActiveTab("app-users")}><UserRound size={16}/><span><b>App users</b><small>Accounts, activity and location history</small></span></button>
+      <button type="button" role="tab" aria-selected={activeTab === "leads"} className={activeTab === "leads" ? "users-hub-tab active" : "users-hub-tab"} onClick={() => setActiveTab("leads")}><ClipboardList size={16}/><span><b>Campaign leads</b><small>Contact records and consent</small></span></button>
+    </div>
+    {activeTab === "app-users" ? <UserActivityPanel db={db}/> : <LeadManagementPanel db={db} campaigns={campaigns} activations={activations}/>}
+  </div>;
+}
