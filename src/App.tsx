@@ -370,7 +370,9 @@ export default function App() {
       payload.activation_id = emptyToNull(payload.activation_id);
       optionalFields(payload, ["email", "verified_via"]);
       payload.verified_via ||= "manual";
-      if (payload.consent_given !== true) { setError("Confirm consent before creating or updating a lead contact record."); return; }
+      if (payload.consent_given !== true && !editingRecordId) { setError("Confirm consent before creating a new lead contact record."); return; }
+      // Existing rows may already have consent_given=false; preserve their stored timestamp
+      // rather than rewriting consent history while editing the lead details.
       payload.consent_at = payload.consent_at || new Date().toISOString();
     }
     if (section === "Invoices") {
