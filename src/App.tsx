@@ -277,6 +277,13 @@ type TaskRow = RecordRow & {
   ui_component?: string; ui_config?: RecordRow | null;
 };
 type VerificationOption = { key: string; label: string; description: string; uiComponents?: string[]; requiredEventTypeCode?: string };
+type UiComponentOption = { key: string; label: string; description?: string };
+const fallbackUiComponents: UiComponentOption[] = [
+  { key: "generic", label: "Generic task action" },
+  { key: "qr_scanner", label: "Open QR scanner" },
+  { key: "open_url", label: "Open URL" },
+  { key: "video_link", label: "Open trailer / video link" },
+];
 const fallbackVerificationOptions: VerificationOption[] = [
   { key: "event_progress", label: "Trusted event progress", description: "Progress advances from trusted events; manual completion claims are not accepted." },
   { key: "recorded_qr_scan", label: "Recent accepted QR scan", description: "Checks a recent accepted scan for this user and campaign.", uiComponents: ["qr_scanner"], requiredEventTypeCode: "qr_scan_task_verified" },
@@ -293,6 +300,7 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
   const [supportsConfiguredProgress, setSupportsConfiguredProgress] = useState(false);
   const [supportsVerificationConfig, setSupportsVerificationConfig] = useState(false);
   const [verificationOptions, setVerificationOptions] = useState<VerificationOption[]>(fallbackVerificationOptions);
+  const [uiComponentOptions, setUiComponentOptions] = useState<UiComponentOption[]>(fallbackUiComponents);
   const [verificationAction, setVerificationAction] = useState("event_progress");
   const [verificationConfigText, setVerificationConfigText] = useState("{}");
   const [uiComponent, setUiComponent] = useState("generic");
@@ -336,6 +344,7 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
     setSupportsVerificationConfig(!verificationProbe.error);
     const remoteMethods = verifierCatalog.data?.methods;
     const remoteModes = verifierCatalog.data?.modes;
+    const remoteUiComponents = verifierCatalog.data?.uiComponents;
     if (Array.isArray(remoteMethods) && Array.isArray(remoteModes)) {
       setVerificationOptions([
         ...remoteModes.map((method: any) => ({ key: String(method.key), label: String(method.label), description: String(method.description || ""), uiComponents: [] })),
@@ -345,6 +354,10 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
           requiredEventTypeCode: typeof method.requiredEventTypeCode === "string" ? method.requiredEventTypeCode : undefined,
         })),
       ]);
+    }
+    if (Array.isArray(remoteUiComponents)) {
+      setUiComponentOptions(remoteUiComponents.filter((item: any) => item && typeof item.key === "string" && typeof item.label === "string")
+        .map((item: any) => ({ key: item.key, label: item.label, description: typeof item.description === "string" ? item.description : undefined })));
     }
     setLoading(false);
   }
@@ -547,8 +560,9 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
           }} required>{verificationOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
           <p className="activity-task-help">{verificationOptions.find(option => option.key === verificationAction)?.description || "Choose a registered server-side verification method."}</p>
           <label>Task UI component<select value={uiComponent} onChange={e => setUiComponent(e.target.value)}>
-            <option value="generic">Generic task action</option><option value="qr_scanner">Open QR scanner</option><option value="open_url">Open URL</option><option value="video_link">Open trailer / video link</option>
+            {uiComponentOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
           </select></label>
+          {uiComponentOptions.find(option => option.key === uiComponent)?.description && <small className="activity-task-help">{uiComponentOptions.find(option => option.key === uiComponent)?.description}</small>}
           <small className="activity-task-help">A video link is presentation only. Verifying a watch requires trusted watch evidence.</small>
           <label>Verifier settings (JSON)<textarea value={verificationConfigText} onChange={e => setVerificationConfigText(e.target.value)} rows={3} spellCheck={false} placeholder='{"purpose":"vendor","venue_id":"...","scan_lookback_seconds":120}' /></label>
           <small className="activity-task-help">Optional settings narrow the server-verified evidence; they do not prove completion.</small>
