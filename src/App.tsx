@@ -81,6 +81,7 @@ export default function App() {
   const [taskSchema, setTaskSchema] = useState({ progress: false, verification: false });
   const [loadWarning, setLoadWarning] = useState("");
   const [lookupLoaded, setLookupLoaded] = useState({ qr: false, categories: false });
+  const [venueCoordinatesAvailable, setVenueCoordinatesAvailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,12 +125,21 @@ export default function App() {
 
   async function loadData(client = db) {
     if (!client) return;
+    // Venue coordinates are an additive migration. Detect it first so this UI continues
+    // to work against the current production schema while the migration is pending.
+    const venueCoordinateProbe = await client.from("venues").select("latitude,longitude").limit(1);
+    const supportsVenueCoordinates = !venueCoordinateProbe.error;
+    setVenueCoordinatesAvailable(supportsVenueCoordinates);
     const pageSize = 500;
     const results = await Promise.all(sections.filter(s => s.table).map(async s => {
       const allRows: RecordRow[] = [];
+      const baseColumns = DATA_COLUMNS[s.name] || "*";
+      const selection = s.name === "Venues" && !supportsVenueCoordinates
+        ? baseColumns.replace(",latitude,longitude", "")
+        : baseColumns;
       for (let offset = 0; ; offset += pageSize) {
         const { data, error } = await client.from(s.table!)
-          .select(DATA_COLUMNS[s.name] || "*")
+          .select(selection)
           .order("id", { ascending: true })
           .range(offset, offset + pageSize - 1);
         if (error) return { name: s.name, data: allRows, error };
@@ -257,7 +267,8 @@ export default function App() {
       payload.city ||= "Chennai";
       payload.state ||= "Tamil Nadu";
       optionalFields(payload, ["address", "pincode", "contact_person", "phone", "email", "notes"]);
-      const latText = String(payload.latitude ?? "").trim();
+      if (venueCoordinatesAvailable) {
+        const latText = String(payload.latitude ?? "").trim();
       const lonText = String(payload.longitude ?? "").trim();
       if (Boolean(latText) !== Boolean(lonText)) { setError("Enter both venue latitude and longitude, or leave both blank."); return; }
       if (!latText) {
@@ -270,6 +281,12 @@ export default function App() {
         }
         payload.latitude = latitude;
         payload.longitude = longitude;
+        }
+      } else {
+        // Older schema: keep the normal venue form functional, omitting fields that are
+        // not present until the additive migration has been applied.
+        delete payload.latitude;
+        delete payload.longitude;
       }
     }
     if (section === "Campaign Locations") {
@@ -781,8 +798,10 @@ export default function App() {
           <label>State<input value={draft.state || ""} onChange={e => setDraft({...draft,state:e.target.value})} placeholder="Tamil Nadu"/></label>
           <label>Pincode<input value={draft.pincode || ""} onChange={e => setDraft({...draft,pincode:e.target.value})}/></label>
           <label>Address<input value={draft.address || ""} onChange={e => setDraft({...draft,address:e.target.value})}/></label>
-          <div className="qr-field-row venue-coordinates-row"><label>Venue latitude<input type="number" step="any" min="-90" max="90" value={draft.latitude ?? ""} onChange={e => setDraft({...draft,latitude:e.target.value})} placeholder="13.0827"/></label><label>Venue longitude<input type="number" step="any" min="-180" max="180" value={draft.longitude ?? ""} onChange={e => setDraft({...draft,longitude:e.target.value})} placeholder="80.2707"/></label></div>
-          <small className="field-help">Store the venue's general coordinates once. A campaign location may use these by default and still override them for a specific entrance, shop or QR placement.</small>
+          {venueCoordinatesAvailable ? <>
+            <div className="qr-field-row venue-coordinates-row"><label>Venue latitude<input type="number" step="any" min="-90" max="90" value={draft.latitude ?? ""} onChange={e => setDraft({...draft,latitude:e.target.value})} placeholder="13.0827"/></label><label>Venue longitude<input type="number" step="any" min="-180" max="180" value={draft.longitude ?? ""} onChange={e => setDraft({...draft,longitude:e.target.value})} placeholder="80.2707"/></label></div>
+            <small className="field-help">Store the venue's general coordinates once. A campaign location may use these by default and still override them for a specific entrance, shop or QR placement.</small>
+          </> : <small className="field-help">Venue coordinate fields are ready in the admin code but need the venue-coordinates database migration applied before they can be stored. Campaign locations can still have their own coordinates.</small>}
           <label>Contact person<input value={draft.contact_person || ""} onChange={e => setDraft({...draft,contact_person:e.target.value})}/></label>
           <label>Phone<input type="tel" value={draft.phone || ""} onChange={e => setDraft({...draft,phone:e.target.value})}/></label>
           <label>Email<input type="email" value={draft.email || ""} onChange={e => setDraft({...draft,email:e.target.value})}/></label>
