@@ -273,7 +273,14 @@ type TaskRow = RecordRow & {
   id: string; name: string; campaign_id: string; mission_type: string;
   target_value: number; reward_points: number; reward_entries: number; is_active: boolean;
   progress_event_type_id?: number | null; progress_mode?: string;
+  verification_action?: string; verification_config?: RecordRow | null;
+  ui_component?: string; ui_config?: RecordRow | null;
 };
+type VerificationOption = { key: string; label: string; description: string; uiComponents?: string[]; requiredEventTypeCode?: string };
+const fallbackVerificationOptions: VerificationOption[] = [
+  { key: "event_progress", label: "Trusted event progress", description: "Progress advances from trusted events; manual completion claims are not accepted." },
+  { key: "recorded_qr_scan", label: "Recent accepted QR scan", description: "Checks a recent accepted scan for this user and campaign.", uiComponents: ["qr_scanner"], requiredEventTypeCode: "qr_scan_task_verified" },
+];
 
 function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; campaigns: RecordRow[]; onRefresh: () => Promise<void> }) {
   const [categories, setCategories] = useState<ActivityCategory[]>([]);
@@ -284,6 +291,15 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [supportsConfiguredProgress, setSupportsConfiguredProgress] = useState(false);
+  const [supportsVerificationConfig, setSupportsVerificationConfig] = useState(false);
+  const [verificationOptions, setVerificationOptions] = useState<VerificationOption[]>(fallbackVerificationOptions);
+  const [verificationAction, setVerificationAction] = useState("event_progress");
+  const [verificationConfigText, setVerificationConfigText] = useState("{}");
+  const [uiComponent, setUiComponent] = useState("generic");
+  const [uiConfigText, setUiConfigText] = useState("{}");
+  const [taskStartsAt, setTaskStartsAt] = useState("");
+  const [taskEndsAt, setTaskEndsAt] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
@@ -302,11 +318,13 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
   async function refresh() {
     setLoading(true);
     setError("");
-    const [categoryResult, taskResult, eventResult, configProbe] = await Promise.all([
+    const [categoryResult, taskResult, eventResult, progressProbe, verificationProbe, verifierCatalog] = await Promise.all([
       db.from("activity_event_types").select("id,code,description,is_important").order("id"),
       db.from("missions").select("*").order("created_at", { ascending: false }).limit(500),
       db.from("activity_events").select("*").order("created_at", { ascending: false }).limit(100),
       db.from("missions").select("progress_event_type_id,progress_mode").limit(1),
+      db.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
+      db.functions.invoke("complete-task", { body: { action: "catalog" } }),
     ]);
     if (categoryResult.error) setError("Could not load activity categories: " + categoryResult.error.message);
     else setCategories((categoryResult.data || []) as ActivityCategory[]);
@@ -314,7 +332,20 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
     else setTasks((taskResult.data || []) as TaskRow[]);
     if (eventResult.error) setError("Could not load activity log: " + eventResult.error.message);
     else setEvents(eventResult.data || []);
-    setSupportsConfiguredProgress(!configProbe.error);
+    setSupportsConfiguredProgress(!progressProbe.error);
+    setSupportsVerificationConfig(!verificationProbe.error);
+    const remoteMethods = verifierCatalog.data?.methods;
+    const remoteModes = verifierCatalog.data?.modes;
+    if (Array.isArray(remoteMethods) && Array.isArray(remoteModes)) {
+      setVerificationOptions([
+        ...remoteModes.map((method: any) => ({ key: String(method.key), label: String(method.label), description: String(method.description || ""), uiComponents: [] })),
+        ...remoteMethods.map((method: any) => ({
+          key: String(method.key), label: String(method.label), description: String(method.description || ""),
+          uiComponents: Array.isArray(method.uiComponents) ? method.uiComponents : [],
+          requiredEventTypeCode: typeof method.requiredEventTypeCode === "string" ? method.requiredEventTypeCode : undefined,
+        })),
+      ]);
+    }
     setLoading(false);
   }
 
@@ -346,6 +377,31 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
     e.preventDefault();
     const targetNumber = Number(target), pointsNumber = Number(points), entriesNumber = Number(entries);
     const selectedCategory = categories.find(item => item.id === Number(activityTypeId));
+    const selectedVerifier = verificationOptions.find(option => option.key === verificationAction);
+    if (taskStartsAt && taskEndsAt && new Date(taskEndsAt).getTime() <= new Date(taskStartsAt).getTime()) {
+      setError("Task end time must be later than its start time."); return;
+    }
+    let parsedVerificationConfig: RecordRow = {};
+    let parsedUiConfig: RecordRow = {};
+    try {
+      const parsed = JSON.parse(verificationConfigText);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Verifier settings must be a JSON object.");
+      parsedVerificationConfig = parsed;
+      const parsedUi = JSON.parse(uiConfigText);
+      if (!parsedUi || typeof parsedUi !== "object" || Array.isArray(parsedUi)) throw new Error("UI settings must be a JSON object.");
+      parsedUiConfig = parsedUi;
+    } catch (e: any) {
+      if (supportsVerificationConfig) { setError(e?.message || "Verifier/UI settings must be valid JSON objects."); return; }
+    }
+    if (uiComponent === "open_url" || uiComponent === "video_link") {
+      try {
+        const url = new URL(String(parsedUiConfig.url || ""));
+        if (!["https:", "http:"].includes(url.protocol)) throw new Error();
+      } catch {
+        setError('For Open URL / Trailer link, set a valid http(s) URL in UI settings JSON, e.g. {"url":"https://example.com/trailer","button_label":"Watch trailer"}.');
+        return;
+      }
+    }
     if (!taskName.trim() || !campaignId || !Number.isInteger(targetNumber) || targetNumber < 1 ||
       !Number.isInteger(pointsNumber) || pointsNumber < 0 || !Number.isInteger(entriesNumber) || entriesNumber < 0) {
       setError("Choose a campaign and enter a target of at least 1 plus non-negative whole-number rewards.");
@@ -353,6 +409,10 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
     }
     if (supportsConfiguredProgress && !selectedCategory) {
       setError("Choose the activity category that should advance this task.");
+      return;
+    }
+    if (supportsVerificationConfig && selectedVerifier?.requiredEventTypeCode && selectedCategory?.code !== selectedVerifier.requiredEventTypeCode) {
+      setError("Choose the '" + selectedVerifier.requiredEventTypeCode + "' activity category required by this verifier.");
       return;
     }
     setSaving(true); setError(""); setNotice("");
@@ -364,22 +424,62 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
       target_value: targetNumber,
       reward_points: pointsNumber,
       reward_entries: entriesNumber,
-      is_active: true,
+      starts_at: taskStartsAt ? new Date(taskStartsAt).toISOString() : null,
+      ends_at: taskEndsAt ? new Date(taskEndsAt).toISOString() : null,
     };
+    if (!editingTaskId) payload.is_active = true;
     if (supportsConfiguredProgress && selectedCategory) {
       payload.progress_event_type_id = selectedCategory.id;
       payload.progress_mode = progressMode;
     }
-    const { error: insertError } = await db.from("missions").insert(payload);
-    if (insertError) setError("Could not create task: " + insertError.message);
+    if (supportsVerificationConfig) {
+      payload.verification_action = verificationAction;
+      payload.verification_config = parsedVerificationConfig;
+      payload.ui_component = uiComponent;
+      payload.ui_config = parsedUiConfig;
+    }
+    let saveError: { message: string } | null = null;
+    if (editingTaskId) {
+      const { error } = await db.from("missions").update(payload).eq("id", editingTaskId);
+      saveError = error;
+    } else {
+      const { error } = await db.from("missions").insert(payload);
+      saveError = error;
+    }
+    if (saveError) setError("Could not " + (editingTaskId ? "update" : "create") + " task: " + saveError.message);
     else {
-      setNotice(supportsConfiguredProgress
-        ? "Task created. Its selected activity category and progress mode are saved."
-        : "Task created using the existing mission fields. Event-category-driven progress is not enabled in the database yet; apply the activity-task-engine migration before relying on automatic activity matching.");
+      setNotice((editingTaskId ? "Task updated" : "Task created") + (supportsVerificationConfig ? ". Task rules, verifier and UI settings are saved." : ". Apply the configurable-task-verification migration to configure verifier and UI fields."));
+      setEditingTaskId(null);
       setTaskName(""); setTaskDescription(""); setTarget("3"); setPoints("50"); setEntries("0");
+      setVerificationAction("event_progress"); setVerificationConfigText("{}"); setUiComponent("generic"); setUiConfigText("{}");
+      setTaskStartsAt(""); setTaskEndsAt("");
       await refresh(); await onRefresh();
     }
     setSaving(false);
+  }
+
+  function editTask(task: TaskRow) {
+    setEditingTaskId(task.id);
+    setTaskName(task.name || "");
+    setTaskDescription(task.description || "");
+    setCampaignId(task.campaign_id);
+    setActivityTypeId(task.progress_event_type_id == null ? "" : String(task.progress_event_type_id));
+    setMissionType(task.mission_type || "");
+    setProgressMode(task.progress_mode === "distinct_entities" ? "distinct_entities" : "event_count");
+    setTarget(String(task.target_value ?? 1)); setPoints(String(task.reward_points ?? 0)); setEntries(String(task.reward_entries ?? 0));
+    setVerificationAction(task.verification_action || "event_progress");
+    setVerificationConfigText(JSON.stringify(task.verification_config || {}, null, 2));
+    setUiComponent(task.ui_component || "generic");
+    setUiConfigText(JSON.stringify(task.ui_config || {}, null, 2));
+    setTaskStartsAt(task.starts_at ? toLocalDateTime(task.starts_at) : "");
+    setTaskEndsAt(task.ends_at ? toLocalDateTime(task.ends_at) : "");
+    setError(""); setNotice("");
+    document.querySelector(".activity-task-grid-bottom")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function cancelTaskEdit() {
+    setEditingTaskId(null); setTaskName(""); setTaskDescription(""); setTarget("3"); setPoints("50"); setEntries("0");
+    setVerificationAction("event_progress"); setVerificationConfigText("{}"); setUiComponent("generic"); setUiConfigText("{}");
+    setTaskStartsAt(""); setTaskEndsAt(""); setError(""); setNotice("");
   }
 
   async function toggleTask(task: TaskRow) {
@@ -407,6 +507,7 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
       <div><small>Recent activity records</small><b>{loading ? "—" : events.length}</b></div>
     </div>
     {!supportsConfiguredProgress && !loading && <div className="activity-task-warning"><ShieldCheck size={17}/><span>The database currently exposes the legacy task schema. Task creation works, but assigning a numeric activity category and counting distinct friends requires the numbered activity/task-engine migration.</span></div>}
+    {!supportsVerificationConfig && !loading && <div className="activity-task-warning"><ShieldCheck size={17}/><span>Verifier and UI settings are not available in the current database schema. Apply the configurable-task-verification migration before relying on these controls.</span></div>
     <div className="activity-task-grid">
       <form className="panel activity-task-form" onSubmit={createCategory}>
         <h3><Activity size={17}/> Create activity category</h3>
@@ -425,19 +526,42 @@ function ActivityTasksPanel({ db, campaigns, onRefresh }: { db: SupabaseClient; 
     </div>
     <div className="activity-task-grid activity-task-grid-bottom">
       <form className="panel activity-task-form" onSubmit={createTask}>
-        <h3><Plus size={17}/> Create movie task</h3>
-        <p className="activity-task-help">Set the campaign, completion target and rewards.</p>
+        <h3><Plus size={17}/>{editingTaskId ? "Edit movie task" : "Create movie task"}</h3>
+        <p className="activity-task-help">Configure task rules, verification, presentation and rewards without editing app code.</p>
         <label>Task name<input value={taskName} onChange={e => setTaskName(e.target.value)} placeholder="Refer 3 friends to this movie" required/></label>
         <label>Description<textarea value={taskDescription} onChange={e => setTaskDescription(e.target.value)} rows={2} placeholder="Instructions visible to participants"/></label>
         <label>Movie campaign<select value={campaignId} onChange={e => setCampaignId(e.target.value)} required><option value="">Choose campaign…</option>{campaigns.map(campaign => <option key={campaign.id} value={campaign.id}>{campaign.name}{campaign.active ? "" : " (inactive)"}</option>)}</select></label>
+        <div className="activity-task-field-row"><label>Starts at (optional)<input type="datetime-local" value={taskStartsAt} onChange={e => setTaskStartsAt(e.target.value)}/></label><label>Ends at (optional)<input type="datetime-local" value={taskEndsAt} onChange={e => setTaskEndsAt(e.target.value)}/></label></div>
         {supportsConfiguredProgress ? <><label>Qualifying activity category<select value={activityTypeId} onChange={e => setActivityTypeId(e.target.value)} required><option value="">Choose category…</option>{categories.map(item => <option key={item.id} value={item.id}>{item.id} · {item.code}</option>)}</select></label><label>Progress mode<select value={progressMode} onChange={e => setProgressMode(e.target.value as "event_count" | "distinct_entities")}><option value="event_count">Count qualifying events</option><option value="distinct_entities">Count unique friends / entities</option></select></label></> : <label>Legacy mission type<input value={missionType} onChange={e => setMissionType(e.target.value)} placeholder="referral_friend_qualified" required/></label>}
+        {supportsVerificationConfig && <div className="activity-task-config-panel">
+          <h4>Verification & task UI</h4>
+          <label>Verification method<select value={verificationAction} onChange={e => {
+            const key = e.target.value; setVerificationAction(key);
+            const option = verificationOptions.find(item => item.key === key);
+            if (option?.requiredEventTypeCode) {
+              const category = categories.find(item => item.code === option.requiredEventTypeCode);
+              if (category) setActivityTypeId(String(category.id));
+            }
+            if (option?.uiComponents?.[0]) setUiComponent(option.uiComponents[0]);
+            else if (key === "event_progress") setUiComponent("generic");
+          }} required>{verificationOptions.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+          <p className="activity-task-help">{verificationOptions.find(option => option.key === verificationAction)?.description || "Choose a registered server-side verification method."}</p>
+          <label>Task UI component<select value={uiComponent} onChange={e => setUiComponent(e.target.value)}>
+            <option value="generic">Generic task action</option><option value="qr_scanner">Open QR scanner</option><option value="open_url">Open URL</option><option value="video_link">Open trailer / video link</option>
+          </select></label>
+          <small className="activity-task-help">A video link is presentation only. Verifying a watch requires trusted watch evidence.</small>
+          <label>Verifier settings (JSON)<textarea value={verificationConfigText} onChange={e => setVerificationConfigText(e.target.value)} rows={3} spellCheck={false} placeholder='{"purpose":"vendor","venue_id":"...","scan_lookback_seconds":120}' /></label>
+          <small className="activity-task-help">Optional settings narrow the server-verified evidence; they do not prove completion.</small>
+          <label>UI settings (JSON)<textarea value={uiConfigText} onChange={e => setUiConfigText(e.target.value)} rows={3} spellCheck={false} placeholder='{"url":"https://...","button_label":"Watch trailer"}' /></label>
+          <small className="activity-task-help">Never store credentials or correct quiz answers in presentation settings.</small>
+        </div>}
         <div className="activity-task-field-row"><label>Target count<input type="number" min="1" step="1" value={target} onChange={e => setTarget(e.target.value)} required/></label><label>Reward points<input type="number" min="0" step="1" value={points} onChange={e => setPoints(e.target.value)} required/></label><label>Reward entries<input type="number" min="0" step="1" value={entries} onChange={e => setEntries(e.target.value)} required/></label></div>
-        <button className="button" disabled={saving || campaigns.length === 0}>{saving ? "Saving…" : "Create and activate task"}</button>
-        <small className="activity-task-help">This configures the task. Reward eligibility must be validated by trusted server-side logic, not browser-submitted points.</small>
+        <div className="activity-task-form-actions"><button className="button" disabled={saving || campaigns.length === 0}>{saving ? "Saving…" : editingTaskId ? "Save task changes" : "Create and activate task"}</button>{editingTaskId && <button type="button" className="secondary" disabled={saving} onClick={cancelTaskEdit}>Cancel edit</button>}</div>
+        <small className="activity-task-help">Reward eligibility and points are enforced by trusted server-side logic; browser-submitted progress is not proof.</small>
       </form>
       <section className="panel">
         <div className="activity-task-section-heading"><div><h3>Configured tasks</h3><p>Pause tasks without deleting their progress.</p></div><button className="icon-button" type="button" title="Refresh tasks" onClick={() => void refresh()}><RefreshCw size={15}/></button></div>
-        {loading ? <div className="empty">Loading tasks…</div> : <div className="activity-task-list">{tasks.map(task => <article key={task.id} className="activity-task-card"><div className="activity-task-card-top"><div><strong>{task.name}</strong><small>{campaigns.find(campaign => campaign.id === task.campaign_id)?.name || "Unknown campaign"} · {task.progress_event_type_id != null ? categories.find(item => item.id === task.progress_event_type_id)?.code || ("Type " + task.progress_event_type_id) : task.mission_type}</small></div><span className={task.is_active ? "badge yes" : "badge"}>{task.is_active ? "Active" : "Paused"}</span></div><div className="activity-task-card-bottom"><span>Target <b>{task.target_value}</b> · Points <b>{task.reward_points}</b> · Entries <b>{task.reward_entries}</b>{task.progress_mode ? " · " + pretty(task.progress_mode) : ""}</span><button type="button" className="secondary" disabled={saving} onClick={() => void toggleTask(task)}>{task.is_active ? "Pause" : "Activate"}</button></div></article>)}{!tasks.length && <div className="empty">No tasks configured yet.</div>}</div>}
+        {loading ? <div className="empty">Loading tasks…</div> : <div className="activity-task-list">{tasks.map(task => <article key={task.id} className="activity-task-card"><div className="activity-task-card-top"><div><strong>{task.name}</strong><small>{campaigns.find(campaign => campaign.id === task.campaign_id)?.name || "Unknown campaign"} · {task.progress_event_type_id != null ? categories.find(item => item.id === task.progress_event_type_id)?.code || ("Type " + task.progress_event_type_id) : task.mission_type}</small></div><span className={task.is_active ? "badge yes" : "badge"}>{task.is_active ? "Active" : "Paused"}</span></div><div className="activity-task-card-bottom"><span>Target <b>{task.target_value}</b> · Points <b>{task.reward_points}</b> · Entries <b>{task.reward_entries}</b>{task.progress_mode ? " · " + pretty(task.progress_mode) : ""} · Verify: {task.verification_action || "legacy"} · UI: {task.ui_component || "generic"}</span><div className="activity-task-actions"><button type="button" className="secondary" disabled={saving} onClick={() => editTask(task)}>Edit</button><button type="button" className="secondary" disabled={saving} onClick={() => void toggleTask(task)}>{task.is_active ? "Pause" : "Activate"}</button></div></div></article>)}{!tasks.length && <div className="empty">No tasks configured yet.</div>}</div>}
       </section>
     </div>
     <section className="panel activity-log-panel">
