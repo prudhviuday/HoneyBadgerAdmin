@@ -133,3 +133,15 @@
 .activity-log-panel td code{font:10px 'DM Mono';color:#b4b5be}
 @media(max-width:1000px){.activity-task-grid,.activity-task-grid-bottom{grid-template-columns:1fr}.activity-task-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){.activity-task-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.activity-task-metrics>div{padding:12px}.activity-task-metrics b{font-size:22px}.activity-task-field-row{grid-template-columns:1fr}.activity-task-card-top,.activity-task-card-bottom{align-items:flex-start;flex-direction:column}.activity-task-section-heading{align-items:flex-start}.activity-category-row{flex-wrap:wrap}.activity-category-row>.badge{margin-left:45px}}
+
+/* Configurable task verifier and UI settings */
+.activity-task-config-panel{grid-column:1/-1;display:grid;gap:9px;margin:6px 0 12px;padding:15px;border:1px solid #41352f;border-radius:9px;background:#17181d}
+.activity-task-config-panel h4{margin:0;color:#f2f1ef;font:600 13px 'Space Grotesk'}
+.activity-task-config-panel label{display:grid;gap:7px;color:#bcbcc4;font-size:12px;margin-top:7px}
+.activity-task-config-panel input,.activity-task-config-panel select,.activity-task-config-panel textarea{width:100%;padding:10px 11px;background:#101115;border:1px solid #383941;border-radius:7px;color:#eee;outline:none;font:12px 'DM Mono',monospace}
+.activity-task-config-panel textarea{resize:vertical;line-height:1.5}
+.activity-task-config-panel input:focus,.activity-task-config-panel select:focus,.activity-task-config-panel textarea:focus{border-color:var(--orange)}
+.activity-task-config-panel .activity-task-help{margin:0;line-height:1.5}
+.activity-task-form-actions,.activity-task-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.activity-task-form-actions{grid-column:1/-1;margin-top:18px}
+.activity-task-actions{justify-content:flex-end}
