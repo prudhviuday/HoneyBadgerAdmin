@@ -6,7 +6,7 @@ import { ActivityTasksPanel, UserActivityPanel } from "./AdminPanels";
 
 type Config = { url?: string; anonKey?: string };
 type RecordRow = Record<string, any>;
-type Section = "Overview" | "Movies" | "Clients" | "Campaigns" | "Events & Hunts" | "Venues" | "Campaign Locations" | "QR Manager" | "User Activity" | "Activity & Tasks";
+type Section = "Overview" | "Movies" | "Clients" | "Campaigns" | "Events & Hunts" | "Venues" | "Campaign Locations" | "QR Manager" | "Activations" | "Leads" | "Invoices" | "Expenses" | "User Activity" | "Activity & Tasks";
 const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Overview", icon: LayoutDashboard },
   { name: "Movies", icon: Film, table: "movies" },
@@ -16,6 +16,10 @@ const sections: { name: Section; icon: typeof Film; table?: string }[] = [
   { name: "Venues", icon: Building2, table: "venues" },
   { name: "Campaign Locations", icon: MapPin, table: "locations" },
   { name: "QR Manager", icon: QrCode, table: "qr_codes" },
+  { name: "Activations", icon: ClipboardList, table: "activations" },
+  { name: "Leads", icon: UserRound, table: "leads" },
+  { name: "Invoices", icon: Save, table: "invoices" },
+  { name: "Expenses", icon: Activity, table: "expenses" },
   { name: "User Activity", icon: UserRound },
   { name: "Activity & Tasks", icon: ListChecks },
 ];
@@ -27,6 +31,10 @@ const columns: Record<string, string[]> = {
   Venues: ["name", "venue_type", "city", "state", "coordinates", "linked_movies", "linked_campaigns", "linked_locations", "active"],
   "Campaign Locations": ["name", "category", "campaign_name", "movie_title", "venue_name", "latitude", "longitude", "points", "is_active"],
   "QR Manager": ["display_name", "short_code", "purpose", "campaign_name", "venue_name", "use_count", "is_active"],
+  Activations: ["name", "shop_code", "campaign_name", "venue_name", "active"],
+  Leads: ["name", "phone", "email", "campaign_name", "activation_name", "verified_via", "consent_given"],
+  Invoices: ["invoice_number", "client_name", "campaign_name", "issue_date", "due_date", "total_amount", "status"],
+  Expenses: ["campaign_name", "category", "description", "vendor", "expense_date", "amount"],
 };
 const DATA_COLUMNS: Record<string, string> = {
   Movies: "id,title,client_id,language,release_date,poster_url,trailer_url,active,notes,created_at",
@@ -35,6 +43,10 @@ const DATA_COLUMNS: Record<string, string> = {
   Venues: "id,name,address,city,state,pincode,venue_type,contact_person,phone,email,active,notes,created_at,latitude,longitude",
   "Campaign Locations": "id,campaign_id,name,category,description,latitude,longitude,address,points,is_active,created_at,venue_id",
   "QR Manager": "id,campaign_id,interaction_source_id,qr_type,is_active,starts_at,expires_at,max_uses,use_count,created_at,purpose,public_code,venue_id,inviter_user_id,referral_code,hunt_id,display_name,short_code",
+  Activations: "id,campaign_id,name,shop_code,venue_name,created_at,venue_id,active",
+  Leads: "id,campaign_id,activation_id,name,phone,email,verified_via,consent_given,consent_at,created_at",
+  Invoices: "id,client_id,campaign_id,invoice_number,issue_date,due_date,amount,tax_amount,total_amount,status,notes,created_at",
+  Expenses: "id,campaign_id,category,description,amount,expense_date,vendor,notes,created_at",
   "Events & Hunts": "*",
 };
 const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -226,7 +238,7 @@ export default function App() {
     const finishLocationAfterSave = submitter?.dataset.locationSaveMode !== "another";
     if (!db) return;
     const table = sections.find(s => s.name === section)?.table;
-    if (!table || !["Movies", "Clients", "Campaigns", "Venues", "Campaign Locations"].includes(section)) return;
+    if (!table || !["Movies", "Clients", "Campaigns", "Venues", "Campaign Locations", "Activations", "Leads", "Invoices", "Expenses"].includes(section)) return;
 
     const payload: RecordRow = { ...draft };
     if (editingRecordId || editingLocationId) { delete payload.id; delete payload.created_at; delete payload.updated_at; }
@@ -290,6 +302,47 @@ export default function App() {
         delete payload.latitude;
         delete payload.longitude;
       }
+    }
+    if (section === "Activations") {
+      payload.name = String(payload.name || "").trim();
+      payload.shop_code = String(payload.shop_code || "").trim();
+      if (!payload.name || !payload.shop_code || !payload.campaign_id) { setError("Activation name, unique shop code and campaign are required."); return; }
+      payload.venue_id = emptyToNull(payload.venue_id);
+      payload.venue_name = emptyToNull(payload.venue_name);
+      payload.active = payload.active !== false;
+      optionalFields(payload, ["shop_code", "venue_name"]);
+    }
+    if (section === "Leads") {
+      payload.name = String(payload.name || "").trim();
+      payload.phone = String(payload.phone || "").trim();
+      if (!payload.name || !payload.phone || !payload.campaign_id) { setError("Lead name, phone and campaign are required."); return; }
+      payload.activation_id = emptyToNull(payload.activation_id);
+      optionalFields(payload, ["email", "verified_via"]);
+      payload.verified_via ||= "manual";
+      payload.consent_given = payload.consent_given === true;
+      payload.consent_at = payload.consent_given ? (payload.consent_at || new Date().toISOString()) : null;
+    }
+    if (section === "Invoices") {
+      payload.invoice_number = String(payload.invoice_number || "").trim();
+      if (!payload.invoice_number) { setError("Enter an invoice number."); return; }
+      payload.client_id = emptyToNull(payload.client_id);
+      payload.campaign_id = emptyToNull(payload.campaign_id);
+      const amount = Number(payload.amount ?? 0), tax = Number(payload.tax_amount ?? 0);
+      if (![amount, tax].every(value => Number.isFinite(value) && value >= 0)) { setError("Invoice amount and tax must be non-negative numbers."); return; }
+      payload.amount = amount; payload.tax_amount = tax; payload.total_amount = amount + tax;
+      payload.issue_date ||= new Date().toISOString().slice(0,10);
+      payload.due_date = emptyToNull(payload.due_date);
+      payload.status ||= "draft";
+      optionalFields(payload, ["notes"]);
+    }
+    if (section === "Expenses") {
+      payload.campaign_id = emptyToNull(payload.campaign_id);
+      payload.category = String(payload.category || "").trim();
+      const amount = Number(payload.amount ?? 0);
+      if (!payload.campaign_id || !payload.category || !Number.isFinite(amount) || amount < 0) { setError("Expense campaign, category and a non-negative amount are required."); return; }
+      payload.amount = amount;
+      payload.expense_date ||= new Date().toISOString().slice(0,10);
+      optionalFields(payload, ["description", "vendor", "notes"]);
     }
     if (section === "Campaign Locations") {
       payload.name = String(payload.name || "").trim();
@@ -374,16 +427,20 @@ export default function App() {
         if (updateError) throw new Error("Could not update campaign location: " + updateError.message);
         if (!updated?.length) throw new Error("No location was updated. Refresh and check admin permissions.");
         setNotice("Campaign location updated, including its campaign/movie and optional physical venue association.");
-      } else if (editingRecordId && ["Movies", "Clients", "Campaigns", "Venues"].includes(section)) {
+      } else if (editingRecordId && ["Movies", "Clients", "Campaigns", "Venues", "Activations", "Leads", "Invoices", "Expenses"].includes(section)) {
         const { data: updated, error: updateError } = await db.from(table).update(payload).eq("id", editingRecordId).select("id");
         if (updateError) throw new Error("Could not update record: " + updateError.message);
         if (!updated?.length) throw new Error("No record was updated. Refresh and check admin permissions.");
-        setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : section === "Campaigns" ? "Campaign" : "Venue") + " updated successfully.");
+        const recordNames: Record<string, string> = { Movies: "Movie", Clients: "Client", Campaigns: "Campaign", Venues: "Venue", Activations: "Activation", Leads: "Lead", Invoices: "Invoice", Expenses: "Expense" };
+        setNotice((recordNames[section] || section) + " updated successfully.");
       } else {
         const { error: insertError } = await db.from(table).insert(payload);
         if (insertError) throw new Error("Could not create record: " + insertError.message);
         if (section === "Campaign Locations") setNotice("Campaign location created and attached to the selected campaign and map. The linked movie is derived from that campaign.");
-        else setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
+        else {
+          const recordNames: Record<string, string> = { Movies: "Movie", Clients: "Client", Venues: "Venue", Activations: "Activation", Leads: "Lead", Invoices: "Invoice", Expenses: "Expense" };
+          setNotice((recordNames[section] || section) + " created successfully.");
+        }
       }
       const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null;
       const keepAddingLocations = section === "Campaign Locations" && Boolean(backToCampaignId) && !editingLocationId && !finishLocationAfterSave;
