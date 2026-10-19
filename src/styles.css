@@ -227,3 +227,15 @@
 .location-manual-heading{margin:12px 0 2px;padding-top:14px;border-top:1px solid #34353d}
 .location-manual-heading h4{font-size:13px}
 @media(max-width:650px){.location-library{padding:12px}.location-library-result{grid-template-columns:auto minmax(0,1fr);gap:8px}.location-library-action{grid-column:2;justify-self:start;width:100%;white-space:normal}.location-library-icon{align-self:start}}
+
+/* Admin optimization surfaces: multi-location batches and shared venue defaults. */
+.location-batch-panel{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:4px 0 14px;border:1px solid #60412e;border-radius:9px;background:#251d19}
+.location-batch-panel>div{display:grid;gap:5px;min-width:0}
+.location-batch-panel b{color:#ffb183;font-size:13px}
+.location-batch-panel small,.campaign-default-actions .field-help{color:#a3a1a3;line-height:1.5}
+.location-batch-panel .secondary{flex-shrink:0}
+.campaign-default-actions{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}
+.campaign-default-actions .field-help{margin:0}
+.venue-coordinates-row{grid-column:1/-1}
+.location-library-action{white-space:nowrap}
+@media(max-width:650px){.location-batch-panel,.campaign-default-actions{align-items:stretch;flex-direction:column}.location-batch-panel .secondary,.campaign-default-actions .secondary{width:100%}}
