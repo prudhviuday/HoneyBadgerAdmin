@@ -65,6 +65,7 @@ export default function App() {
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [returnToCampaignId, setReturnToCampaignId] = useState<string | null>(null);
+  const [locationPickerSearch, setLocationPickerSearch] = useState("");
   const [qrDraft, setQrDraft] = useState<RecordRow>({});
   const [qrFilters, setQrFilters] = useState({ purpose: "", campaign_id: "", venue_id: "", is_active: "" });
   const [taskSchema, setTaskSchema] = useState({ progress: false, verification: false });
@@ -285,7 +286,7 @@ export default function App() {
         else setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
       }
       const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null;
-      setShowAdd(false); setDraft({}); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null);
+      setShowAdd(false); setDraft({}); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null); setLocationPickerSearch("");
       await loadData();
       if (createdCampaignForEditing) {
         setSection("Campaigns"); setEditingRecordId(createdCampaignForEditing.id);
@@ -303,6 +304,107 @@ export default function App() {
       setBusy(false);
     }
   }
+
+  async function addExistingMapPointToCampaign(source: RecordRow) {
+    if (!db) return;
+    const targetCampaignId = String(draft.campaign_id || returnToCampaignId || "");
+    if (!targetCampaignId || !(rows.Campaigns || []).some(campaign => campaign.id === targetCampaignId)) {
+      setError("Choose the campaign first, then add a saved map point to it."); return;
+    }
+    if (String(source.campaign_id) === targetCampaignId) {
+      setError("This map point is already on the selected campaign. Edit the existing row instead of adding a duplicate."); return;
+    }
+    const latitude = Number(source.latitude), longitude = Number(source.longitude), points = Number(source.points ?? 0);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !Number.isInteger(points) || points < 0) {
+      setError("This saved map point has invalid coordinates or points, so it cannot be reused safely."); return;
+    }
+    const campaignLocations = rows["Campaign Locations"] || [];
+    const duplicate = campaignLocations.some(location => location.campaign_id === targetCampaignId && (
+      (source.venue_id && location.venue_id === source.venue_id) ||
+      (String(location.name || "").trim().toLowerCase() === String(source.name || "").trim().toLowerCase() &&
+        Number(location.latitude) === latitude && Number(location.longitude) === longitude)
+    ));
+    if (duplicate) {
+      setError("This venue or map point already appears on the selected campaign. Open Campaign Locations to edit that existing entry."); return;
+    }
+    const payload = {
+      campaign_id: targetCampaignId,
+      name: String(source.name || "").trim(),
+      category: String(source.category || "other"),
+      description: source.description || null,
+      latitude,
+      longitude,
+      address: source.address || null,
+      points,
+      is_active: true,
+      venue_id: source.venue_id || null,
+    };
+    if (!payload.name) { setError("The saved map point has no name and cannot be reused."); return; }
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const { error: insertError } = await db.from("locations").insert(payload);
+      if (insertError) throw new Error("Could not add this map point to the campaign: " + insertError.message);
+      setNotice("Added “" + payload.name + "” to this campaign. Its saved coordinates and venue link were copied; the original campaign location was left unchanged.");
+      setLocationPickerSearch("");
+      await loadData();
+      const backToCampaignId = returnToCampaignId;
+      if (backToCampaignId) {
+        const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId);
+        if (campaign) {
+          setSection("Campaigns"); setEditingRecordId(campaign.id); setEditingLocationId(null);
+          setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true); setReturnToCampaignId(null);
+        }
+      } else {
+        setDraft({ name: "", campaign_id: targetCampaignId, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true });
+      }
+    } catch (e: any) {
+      setError(e?.message || "Could not reuse this campaign location.");
+    } finally { setBusy(false); }
+  }
+
+  function useVenueDetails(venue: RecordRow) {
+    const venueType = String(venue.venue_type || "").toLowerCase();
+    const category = venueType === "shop" ? "shopping" : ["mall", "college", "cafe", "theatre", "public"].includes(venueType) ? venueType : "other";
+    const address = [venue.address, venue.city, venue.state, venue.pincode].filter(value => String(value || "").trim()).join(", ");
+    setDraft(current => ({
+      ...current,
+      name: venue.name || "",
+      category,
+      venue_id: venue.id,
+      address,
+      latitude: "",
+      longitude: "",
+      description: current.description || "",
+      points: current.points ?? 20,
+      is_active: true,
+    }));
+    setNotice("Venue details loaded. This venue does not yet have a saved campaign map point, so enter its latitude and longitude below to finish the pin.");
+    setError("");
+  }
+
+  const locationLibraryResults = useMemo(() => {
+    const query = locationPickerSearch.trim().toLowerCase();
+    const campaignLocations = rows["Campaign Locations"] || [];
+    const points = campaignLocations
+      .slice()
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+      .map(location => {
+        const campaign = (rows.Campaigns || []).find(item => item.id === location.campaign_id);
+        const movie = (rows.Movies || []).find(item => item.id === campaign?.movie_id);
+        const venue = (rows.Venues || []).find(item => item.id === location.venue_id);
+        const title = String(location.name || "Unnamed map point");
+        const subtitle = [movie?.title, campaign?.name, label(location.category || "other"), venue?.name, venue?.city, location.address].filter(Boolean).join(" · ");
+        return { kind: "map-point" as const, id: location.id, item: location, title, subtitle, searchText: [title, subtitle].join(" ").toLowerCase() };
+      });
+    const venues = (rows.Venues || [])
+      .filter(venue => venue.active !== false && !campaignLocations.some(location => location.venue_id === venue.id))
+      .map(venue => {
+        const title = String(venue.name || "Unnamed venue");
+        const subtitle = [label(venue.venue_type || "venue"), venue.city, venue.state, venue.address, venue.pincode].filter(Boolean).join(" · ");
+        return { kind: "venue" as const, id: venue.id, item: venue, title, subtitle, searchText: [title, subtitle].join(" ").toLowerCase() };
+      });
+    return [...points, ...venues].filter(result => !query || result.searchText.includes(query)).slice(0, 8);
+  }, [rows, locationPickerSearch]);
 
   const visibleRows = useMemo(() => {
     const base = rows[section] || [];
@@ -468,7 +570,7 @@ export default function App() {
   return <div className="layout">
     <aside className="sidebar"><div className="brand"><div className="brand-icon"><Clapperboard/></div><div><b>HONEYBADGER</b><small>ADMIN CONTROL ROOM</small></div></div><p className="eyebrow">WORKSPACE</p><nav>{sections.map(s => <button key={s.name} className={section === s.name ? "nav active" : "nav"} onClick={() => { setSection(s.name); setSearch(""); setShowAdd(false); setEditingRecordId(null); setEditingLocationId(null); setReturnToCampaignId(null); setDraft({}); }}><s.icon size={17}/>{s.name}{s.table && <span>{total(s.name)}</span>}</button>)}</nav><div className="side-bottom"><i/> Supabase connected <button title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></aside>
     <main><header className="topbar"><span>Workspace / <b>{section}</b></span><div><span className="live">● LIVE DATA</span><button className="icon-button" title="Refresh data" onClick={() => loadData()}><RefreshCw size={16}/></button><button className="icon-button" title="Sign out" onClick={() => db.auth.signOut()}><LogOut size={16}/></button></div></header>
-      <div className="content"><div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>{section === "Campaign Locations" ? "Map points belong to a campaign and inherit its movie. Link a saved physical venue when the map point is at a mall, college, shop or other venue. Click a row to edit." : section === "Venues" ? "Reusable physical places live here. Click a row to edit a venue, then manage its movie/campaign associations through campaign locations." : ["Movies", "Campaigns", "Clients"].includes(section) ? "Click a row in the table to edit the saved record. Campaigns also let you add and edit their locations." : "Manage the same live data used by the Honeybadger app."}</p></div>{["Movies","Clients","Campaigns","Venues","Campaign Locations"].includes(section) && <button className="button" onClick={() => { setError(""); setNotice(""); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null); setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true, client_id: "" } : section === "Clients" ? { name: "", active: true, status: "active" } : section === "Campaigns" ? { name: "", active: true, movie_id: "", client_id: "", selected_task_keys: [], task_points: {} } : section === "Campaign Locations" ? { name: "", campaign_id: "", category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(true); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section === "Campaign Locations" ? "campaign location" : section.slice(0,-1).toLowerCase()}</button>}</div>
+      <div className="content"><div className="page-title"><div><p className="eyebrow">HONEYBADGER / MANAGEMENT</p><h1>{section === "Overview" ? "Your movie universe." : section}</h1><p>{section === "Campaign Locations" ? "Campaign-specific map pins store coordinates, category and points. Search and reuse an existing pin across campaigns instead of entering its details again." : section === "Venues" ? "Reusable physical place records—create each mall, college, shop or theatre once. Campaign Locations are separate campaign-specific map pins that can link to a venue." : ["Movies", "Campaigns", "Clients"].includes(section) ? "Click a row in the table to edit the saved record. Campaigns also let you add and edit their locations." : "Manage the same live data used by the Honeybadger app."}</p></div>{["Movies","Clients","Campaigns","Venues","Campaign Locations"].includes(section) && <button className="button" onClick={() => { setError(""); setNotice(""); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null); setLocationPickerSearch(""); setDraft(section === "Movies" ? { title: "", language: "Tamil", active: true, client_id: "" } : section === "Clients" ? { name: "", active: true, status: "active" } : section === "Campaigns" ? { name: "", active: true, movie_id: "", client_id: "", selected_task_keys: [], task_points: {} } : section === "Campaign Locations" ? { name: "", campaign_id: "", category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true } : { name: "", venue_type: "shop", city: "Chennai", state: "Tamil Nadu", active: true }); setShowAdd(true); }}><Plus size={16}/> Add {section === "Venues" ? "venue" : section === "Campaign Locations" ? "campaign location" : section.slice(0,-1).toLowerCase()}</button>}</div>
       {error && <div className="error">{error}</div>}{notice && <div className="notice">{notice}</div>}
       {section === "User Activity" ? <UserActivityPanel db={db} /> : section === "Activity & Tasks" ? <ActivityTasksPanel db={db} campaigns={rows.Campaigns || []} onRefresh={loadData} /> : section === "Overview" ? <><div className="hero"><span className="eyebrow">SYSTEM OVERVIEW</span><h2>Every campaign.<br/><em>One command centre.</em></h2><p>Manage movie records, campaigns, events, partner venues and QR codes connected to your production marketing.</p></div><div className="stats">{[{name:"Movies",icon:Film},{name:"Campaigns",icon:Activity},{name:"Events & Hunts",icon:CalendarDays},{name:"Venues",icon:Building2},{name:"Campaign Locations",icon:MapPin},{name:"QR Manager",icon:QrCode},{name:"Activity & Tasks",icon:ListChecks}].map(s=><button className="stat" key={s.name} onClick={() => setSection(s.name as Section)}><s.icon size={18}/><span>{s.name}</span><b>{total(s.name)}</b></button>)}</div><div className="panel"><h3>Recent movies</h3><DataTable rows={(rows.Movies || []).slice(0,8)} columns={columns.Movies}/></div></> : <>
       {showAdd && <form className="add-form" onSubmit={addRecord}>
@@ -510,11 +612,12 @@ export default function App() {
               <button type="button" className="button" onClick={() => {
                 const campaignIdForLocation = editingRecordId;
                 setReturnToCampaignId(campaignIdForLocation);
+                setLocationPickerSearch("");
                 setEditingRecordId(null); setEditingLocationId(null);
                 setSection("Campaign Locations");
                 setDraft({ name: "", campaign_id: campaignIdForLocation, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true });
                 setShowAdd(true); setError(""); setNotice("");
-              }}><Plus size={14}/> Add location</button>
+              }}><Plus size={14}/> Find / reuse location</button>
             </div>
             <div className="campaign-location-inline-list">
               {(rows["Campaign Locations"] || []).filter(location => location.campaign_id === editingRecordId).map(location => {
@@ -568,8 +671,26 @@ export default function App() {
           <label className="inline-check"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({...draft,active:e.target.checked})}/> Venue is active</label>
         </>}
         {section === "Campaign Locations" && <>
-          <p className="form-intro">Create a map point for one campaign. The movie is inherited from that campaign, and an existing physical venue can be linked without duplicating the venue record.</p>
+          <p className="form-intro">A campaign location is a map pin for this specific campaign—not a second venue record. Search below to copy a saved campaign map point into this campaign, or select a venue with no saved pin and complete its coordinates. Maintain the physical venue details once in Venues.</p>
           <label>Campaign / movie <span className="required-mark">Required</span><select required value={draft.campaign_id || ""} onChange={e => setDraft({...draft,campaign_id:e.target.value})}><option value="">Choose a campaign…</option>{(rows.Campaigns || []).map(campaign => { const movie = (rows.Movies || []).find(item => item.id === campaign.movie_id); return <option key={campaign.id} value={campaign.id}>{movie?.title || "Movie not linked"} · {campaign.name}{campaign.active ? "" : " (inactive)"}</option>; })}</select>{!(rows.Campaigns || []).length && <small className="field-help">Create a campaign first from the Campaigns panel.</small>}</label>
+          {!editingLocationId && <section className="location-library">
+            <div className="location-library-head"><div><h4>Find an existing location</h4><p>Search saved map pins by location, venue, campaign, movie or address. Selecting a map pin copies its details into this campaign; the original stays unchanged.</p></div></div>
+            <label className="location-library-search"><Search size={15}/><input value={locationPickerSearch} onChange={e => setLocationPickerSearch(e.target.value)} placeholder="Search saved locations and venues…" aria-label="Search saved campaign locations and venues"/></label>
+            <div className="location-library-results">
+              {locationLibraryResults.map(result => result.kind === "map-point" ? <article className="location-library-result" key={"map-" + result.id}>
+                <span className="location-library-icon"><MapPin size={16}/></span>
+                <div className="location-library-copy"><b>{result.title}</b><small>{result.subtitle}</small></div>
+                <button type="button" className="secondary location-library-action" disabled={busy || !draft.campaign_id || String(result.item.campaign_id) === String(draft.campaign_id)} onClick={() => void addExistingMapPointToCampaign(result.item)}>{!draft.campaign_id ? "Choose campaign" : String(result.item.campaign_id) === String(draft.campaign_id) ? "Already added" : "Add to campaign"}</button>
+              </article> : <article className="location-library-result" key={"venue-" + result.id}>
+                <span className="location-library-icon"><Building2 size={16}/></span>
+                <div className="location-library-copy"><b>{result.title}</b><small>{result.subtitle} · No saved map pin yet</small></div>
+                <button type="button" className="secondary location-library-action" disabled={busy} onClick={() => useVenueDetails(result.item)}>Use venue</button>
+              </article>)}
+              {locationLibraryResults.length === 0 && <div className="location-library-empty">No matching saved map points or unused venues. You can create a new campaign map point below.</div>}
+            </div>
+            <small className="field-help">Venues hold reusable physical-place details. Campaign Locations hold campaign-specific coordinates and game settings.</small>
+          </section>}
+          <div className="location-manual-heading"><h4>{editingLocationId ? "Map point details" : "Or create a new campaign map point"}</h4><p>Use these fields when there is no existing map pin to reuse. A venue record alone does not contain map coordinates.</p></div>
           <label>Location name <span className="required-mark">Required</span><input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})} placeholder="e.g. Express Avenue QR activation"/></label>
           <label>Category <span className="required-mark">Required</span><select required value={draft.category || ""} onChange={e => setDraft({...draft,category:e.target.value})}><option value="">Choose category…</option>{Array.from(new Set([...LOCATION_CATEGORIES,...(rows["Campaign Locations"] || []).map(location => location.category).filter(Boolean)])).map(category => <option key={category} value={category}>{label(category)}</option>)}</select></label>
           <label>Physical venue (optional)<select value={draft.venue_id || ""} onChange={e => setDraft({...draft,venue_id:e.target.value})}><option value="">Map point only — no venue record</option>{(rows.Venues || []).filter(venue => venue.active !== false).map(venue => <option key={venue.id} value={venue.id}>{venue.name}{venue.city ? " · " + venue.city : ""}{venue.venue_type ? " · " + venue.venue_type : ""}</option>)}</select><small className="field-help">Choose a saved mall, college, shop or other venue to show the campaign/movie against that physical place.</small></label>
@@ -579,7 +700,7 @@ export default function App() {
           <label>Points for reaching this location<input type="number" min="0" step="1" value={draft.points ?? 0} onChange={e => setDraft({...draft,points:e.target.value})}/><small className="field-help">This is the location's points field; task rewards are configured separately.</small></label>
           <label className="inline-check"><input type="checkbox" checked={draft.is_active !== false} onChange={e => setDraft({...draft,is_active:e.target.checked})}/> Campaign location is active</label>
         </>}
-        <div className="form-actions"><button type="button" className="secondary" onClick={() => { const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null; setShowAdd(false); setEditingLocationId(null); setEditingRecordId(null); setDraft({}); setReturnToCampaignId(null); if (backToCampaignId) { const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId); if (campaign) { setSection("Campaigns"); setEditingRecordId(campaign.id); setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true); } } }}>Cancel</button><button className="button" disabled={busy || (section === "Campaigns" && !(rows.Movies || []).length) || (section === "Campaign Locations" && !(rows.Campaigns || []).length)}>{busy ? "Saving…" : editingLocationId || editingRecordId ? "Save changes" : section === "Campaigns" ? "Create campaign + tasks" : section === "Campaign Locations" ? "Add campaign location" : "Create record"}</button></div>
+        <div className="form-actions"><button type="button" className="secondary" onClick={() => { const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null; setShowAdd(false); setEditingLocationId(null); setEditingRecordId(null); setDraft({}); setReturnToCampaignId(null); setLocationPickerSearch(""); if (backToCampaignId) { const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId); if (campaign) { setSection("Campaigns"); setEditingRecordId(campaign.id); setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true); } } }}>Cancel</button><button className="button" disabled={busy || (section === "Campaigns" && !(rows.Movies || []).length) || (section === "Campaign Locations" && !(rows.Campaigns || []).length)}>{busy ? "Saving…" : editingLocationId || editingRecordId ? "Save changes" : section === "Campaigns" ? "Create campaign + tasks" : section === "Campaign Locations" ? "Add campaign location" : "Create record"}</button></div>
       </form>}
       <div className="toolbar"><div className="search"><Search size={16}/><input placeholder={section === "QR Manager" ? "Search by QR name, code, venue, purpose…" : "Search " + section.toLowerCase()} value={search} onChange={e => setSearch(e.target.value)}/></div><span>{visibleRows.length} records</span></div>
       {section === "QR Manager" && selectedQr && <form className="qr-editor" onSubmit={saveQr}>

@@ -206,3 +206,24 @@
   .campaign-location-inline-row .badge{justify-self:start}
   .campaign-location-inline-row .secondary{grid-column:1/-1;width:100%}
 }
+
+
+/* Search and reuse campaign map points without re-entering their coordinates */
+.location-library,.location-manual-heading{grid-column:1/-1;min-width:0}
+.location-library{margin:14px 0 8px;padding:15px;border:1px solid #4b382b;border-radius:10px;background:#171719}
+.location-library-head h4,.location-manual-heading h4{margin:0 0 5px;color:#f2f1ef;font:600 14px 'Space Grotesk'}
+.location-library-head p,.location-manual-heading p{margin:0;color:#92939d;font-size:11px;line-height:1.6}
+.add-form .location-library-search{display:flex;align-items:center;gap:9px;margin-top:12px;padding:0 10px;border:1px solid #383941;border-radius:7px;background:#101115;color:#ff9a62}
+.add-form .location-library-search input{flex:1;min-width:0;width:100%;padding:11px 2px;border:0;background:transparent;outline:none;color:#eee}
+.add-form .location-library-search input:focus{border-color:transparent}
+.location-library-results{display:grid;gap:7px;margin-top:10px}
+.location-library-result{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px;border:1px solid #303139;border-radius:8px;background:#1e1f24;min-width:0}
+.location-library-icon{display:grid;place-items:center;width:32px;height:32px;border:1px solid #4a3529;border-radius:8px;background:#2b211d;color:#ff9a62}
+.location-library-copy{display:grid;gap:4px;min-width:0}
+.location-library-copy b{color:#f1f1f3;font-size:12px;overflow-wrap:anywhere}
+.location-library-copy small{color:#92939d;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.location-library-action{padding:8px 10px;font-size:10px;white-space:nowrap}
+.location-library-empty{padding:13px;color:#92939d;font-size:11px;line-height:1.6;border:1px dashed #383941;border-radius:8px}
+.location-manual-heading{margin:12px 0 2px;padding-top:14px;border-top:1px solid #34353d}
+.location-manual-heading h4{font-size:13px}
+@media(max-width:650px){.location-library{padding:12px}.location-library-result{grid-template-columns:auto minmax(0,1fr);gap:8px}.location-library-action{grid-column:2;justify-self:start;width:100%;white-space:normal}.location-library-icon{align-self:start}}
