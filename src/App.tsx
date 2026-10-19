@@ -186,7 +186,7 @@ export default function App() {
 
     const selectedTaskKeys = section === "Campaigns" && Array.isArray(payload.selected_task_keys) ? payload.selected_task_keys as string[] : [];
     const selectedTasks = STANDARD_CAMPAIGN_TASKS.filter(task => selectedTaskKeys.includes(task.key));
-    if (selectedTasks.some(task => !!task.lockedReason)) {
+    if (selectedTasks.some(task => !!campaignTaskLockReason(task))) {
       setError("One or more selected task templates are not ready for production yet. Remove the locked task(s) and choose a supported template."); return;
     }
     for (const task of selectedTasks) {
@@ -279,6 +279,16 @@ export default function App() {
     });
   }, [rows, section, search, qrFilters]);
   const total = (name: string) => (rows[name] || []).length;
+  const campaignTaskLockReason = (task: CampaignTaskTemplate): string | null => {
+    if (task.lockedReason) return task.lockedReason;
+    if (taskSchema.progress && !taskSchema.verification && ["scan_first_qr", "scan_three_qrs", "visit_three_locations"].includes(task.key)) {
+      return "The database has part of the newer task schema but is missing verifier settings. Apply the task-verification migration before using these tasks.";
+    }
+    if (taskSchema.progress && task.key === "visit_three_locations") {
+      return "A trusted location-visit verifier is not registered yet; the newer task engine currently supports accepted QR-scan verification.";
+    }
+    return null;
+  };
 
   function openQrEditor(row: RecordRow) {
     const raw = (rows["QR Manager"] || []).find(item => item.id === row.id) || row;
@@ -383,9 +393,10 @@ export default function App() {
               <div className="campaign-task-list">
               {STANDARD_CAMPAIGN_TASKS.map(task => {
                 const checked = (Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).includes(task.key);
-                const locked = !!task.lockedReason;
+                const lockReason = campaignTaskLockReason(task);
+                const locked = !!lockReason;
                 return <div className={"campaign-task-choice" + (locked ? " is-locked" : "")} key={task.key}>
-                  <label className="campaign-task-check"><input type="checkbox" disabled={locked} checked={checked} onChange={e => { const prior = Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys as string[] : []; setDraft({...draft,selected_task_keys:e.target.checked ? [...prior.filter(key => key !== task.key),task.key] : prior.filter(key => key !== task.key)}); }}/><span className="campaign-task-copy"><b>{task.name}</b><small>{task.summary}</small>{locked && <small className="task-locked-note">{task.lockedReason}</small>}</span></label>
+                  <label className="campaign-task-check"><input type="checkbox" disabled={locked} checked={checked} onChange={e => { const prior = Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys as string[] : []; setDraft({...draft,selected_task_keys:e.target.checked ? [...prior.filter(key => key !== task.key),task.key] : prior.filter(key => key !== task.key)}); }}/><span className="campaign-task-copy"><b>{task.name}</b><small>{task.summary}</small>{locked && <small className="task-locked-note">{lockReason}</small>}</span></label>
                   <div className="campaign-task-reward"><label>Points<input type="number" min="0" step="1" disabled={locked} value={draft.task_points?.[task.key] ?? task.reward_points} onChange={e => setDraft({...draft,task_points:{...(draft.task_points || {}),[task.key]:e.target.value}})}/></label></div>
                 </div>;
               })}
