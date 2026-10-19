@@ -273,3 +273,19 @@
 .lead-table-contact{margin-top:4px;font-size:11px;color:var(--muted,#a2a3ad);overflow-wrap:anywhere}
 .lead-edit-button{padding:7px 10px;white-space:nowrap}
 @media(max-width:700px){.users-hub-tabs{flex-direction:column}.lead-admin-form-grid{grid-template-columns:minmax(0,1fr)}.lead-admin-toolbar{align-items:stretch}.lead-admin-search{flex-basis:100%}.lead-admin-count{align-self:center}}
+
+
+/* Movie management: clear status contrast and repeatable poster inputs. */
+.badge.inactive{background:#382326;color:#ffb4b8;border:1px solid #66373b}
+.movie-poster-editor{grid-column:1/-1;display:grid;gap:12px;margin-top:16px;padding:15px;border:1px solid #383941;border-radius:9px;background:#15161a;min-width:0}
+.movie-poster-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.movie-poster-editor-head>div{display:grid;gap:5px;min-width:0}
+.movie-poster-editor-head b{font:600 13px 'Space Grotesk';color:#f1f1f3}
+.movie-poster-editor-head small{color:#92939d;font-size:10px;line-height:1.5}
+.movie-poster-editor-head button{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:none}
+.movie-poster-row{display:grid;grid-template-columns:minmax(0,1fr) 64px auto;align-items:end;gap:10px;padding:10px;border:1px solid #303139;border-radius:8px;background:#1c1d22;min-width:0}
+.movie-poster-row label{margin:0!important;min-width:0}
+.movie-poster-preview{width:64px;height:88px;object-fit:cover;border-radius:5px;border:1px solid #43444c;background:#101115}
+.movie-poster-remove{padding:8px 10px;white-space:nowrap}
+.movie-poster-remove:disabled{opacity:.35;cursor:not-allowed}
+@media(max-width:650px){.movie-poster-editor{grid-column:auto;padding:11px}.movie-poster-editor-head{align-items:flex-start;flex-direction:column}.movie-poster-row{grid-template-columns:minmax(0,1fr) 56px;gap:8px}.movie-poster-preview{width:56px;height:76px}.movie-poster-remove{grid-column:1/-1;width:100%}}
