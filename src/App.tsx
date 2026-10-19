@@ -63,7 +63,7 @@ const DATA_COLUMNS: Record<string, string> = {
   Leads: "id,campaign_id,activation_id,name,phone,email,verified_via,consent_given,consent_at,created_at",
   Invoices: "id,client_id,campaign_id,invoice_number,issue_date,due_date,amount,tax_amount,total_amount,status,notes,created_at",
   Expenses: "id,campaign_id,category,description,amount,expense_date,vendor,notes,created_at",
-  "Events & Hunts": "*",
+  "Events & Hunts": "id,campaign_id,name,is_active",
 };
 const label = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
 const LOCATION_CATEGORIES = ["neighborhood", "shopping", "mall", "transport", "business", "public", "beach", "industrial", "transit", "college", "cafe", "theatre", "activation", "other"];
@@ -107,6 +107,7 @@ export default function App() {
   const [qrDraft, setQrDraft] = useState<RecordRow>({});
   const [qrFilters, setQrFilters] = useState({ purpose: "", campaign_id: "", venue_id: "", is_active: "" });
   const [taskSchema, setTaskSchema] = useState({ progress: false, verification: false });
+  const [taskSchemaLoaded, setTaskSchemaLoaded] = useState(false);
   const [loadWarning, setLoadWarning] = useState("");
   const [lookupLoaded, setLookupLoaded] = useState({ qr: false, categories: false });
   const [venueCoordinatesAvailable, setVenueCoordinatesAvailable] = useState(false);
@@ -223,19 +224,16 @@ export default function App() {
     setLoadedTables(current => ({ ...current, ...nextLoaded }));
     setRowCounts(current => ({ ...current, ...nextCounts }));
 
-    const missionRows = results.find(result => result.name === "Events & Hunts")?.data || rows["Events & Hunts"] || [];
-    if (missionRows.length) {
-      const keys = new Set(Object.keys(missionRows[0]));
-      setTaskSchema({
-        progress: keys.has("progress_event_type_id") && keys.has("progress_mode"),
-        verification: keys.has("verification_action") && keys.has("verification_config") && keys.has("ui_component") && keys.has("ui_config"),
-      });
-    } else if (namesToLoad.includes("Events & Hunts")) {
+    // Only the Campaign editor needs to know which task schema generation is available.
+    // Probe it once on entry (or when Refresh explicitly forces a reload); QR pickers load
+    // only the mission id/name needed for their dropdown.
+    if (section === "Campaigns" && (!taskSchemaLoaded || force)) {
       const [progressProbe, verificationProbe] = await Promise.all([
         client.from("missions").select("progress_event_type_id,progress_mode").limit(1),
         client.from("missions").select("verification_action,verification_config,ui_component,ui_config").limit(1),
       ]);
       setTaskSchema({ progress: !progressProbe.error, verification: !verificationProbe.error });
+      setTaskSchemaLoaded(true);
     }
   }
   async function loadQrLookups(client = db, force = false) {
