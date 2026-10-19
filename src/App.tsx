@@ -257,6 +257,20 @@ export default function App() {
       payload.city ||= "Chennai";
       payload.state ||= "Tamil Nadu";
       optionalFields(payload, ["address", "pincode", "contact_person", "phone", "email", "notes"]);
+      const latText = String(payload.latitude ?? "").trim();
+      const lonText = String(payload.longitude ?? "").trim();
+      if (Boolean(latText) !== Boolean(lonText)) { setError("Enter both venue latitude and longitude, or leave both blank."); return; }
+      if (!latText) {
+        payload.latitude = null;
+        payload.longitude = null;
+      } else {
+        const latitude = Number(latText), longitude = Number(lonText);
+        if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+          setError("Enter valid venue coordinates: latitude from -90 to 90 and longitude from -180 to 180."); return;
+        }
+        payload.latitude = latitude;
+        payload.longitude = longitude;
+      }
     }
     if (section === "Campaign Locations") {
       payload.name = String(payload.name || "").trim();
@@ -353,6 +367,15 @@ export default function App() {
         else setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
       }
       const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null;
+      const keepAddingLocations = section === "Campaign Locations" && Boolean(backToCampaignId) && !editingLocationId;
+      if (keepAddingLocations && backToCampaignId) {
+        setEditingLocationId(null); setEditingRecordId(null); setShowAdd(true);
+        setDraft({ name: "", campaign_id: backToCampaignId, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true });
+        setLocationPickerSearch("");
+        await loadData();
+        setNotice("Location saved. Add another location, or choose Finish & return to movie when you're done.");
+        return;
+      }
       setShowAdd(false); setDraft({}); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null); setLocationPickerSearch("");
       await loadData();
       if (createdCampaignForEditing) {
@@ -381,16 +404,17 @@ export default function App() {
     if (String(source.campaign_id) === targetCampaignId) {
       setError("This map point is already on the selected campaign. Edit the existing row instead of adding a duplicate."); return;
     }
+    if (String(draft.name || "").trim() || String(draft.latitude ?? "").trim() || String(draft.longitude ?? "").trim()) {
+      setError("Save the current location draft or clear it before reusing another saved map point."); return;
+    }
     const latitude = Number(source.latitude), longitude = Number(source.longitude), points = Number(source.points ?? 0);
     if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180 || !Number.isInteger(points) || points < 0) {
       setError("This saved map point has invalid coordinates or points, so it cannot be reused safely."); return;
     }
     const campaignLocations = rows["Campaign Locations"] || [];
-    const duplicate = campaignLocations.some(location => location.campaign_id === targetCampaignId && (
-      (source.venue_id && location.venue_id === source.venue_id) ||
-      (String(location.name || "").trim().toLowerCase() === String(source.name || "").trim().toLowerCase() &&
-        Number(location.latitude) === latitude && Number(location.longitude) === longitude)
-    ));
+    const duplicate = campaignLocations.some(location => location.campaign_id === targetCampaignId &&
+      String(location.name || "").trim().toLowerCase() === String(source.name || "").trim().toLowerCase() &&
+      Number(location.latitude) === latitude && Number(location.longitude) === longitude);
     if (duplicate) {
       setError("This venue or map point already appears on the selected campaign. Open Campaign Locations to edit that existing entry."); return;
     }
@@ -411,22 +435,33 @@ export default function App() {
     try {
       const { error: insertError } = await db.from("locations").insert(payload);
       if (insertError) throw new Error("Could not add this map point to the campaign: " + insertError.message);
-      setNotice("Added “" + payload.name + "” to this campaign. Its saved coordinates and venue link were copied; the original campaign location was left unchanged.");
       setLocationPickerSearch("");
+      setEditingRecordId(null); setEditingLocationId(null); setShowAdd(true);
+      setDraft({ name: "", campaign_id: targetCampaignId, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true });
       await loadData();
-      const backToCampaignId = returnToCampaignId;
-      if (backToCampaignId) {
-        const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId);
-        if (campaign) {
-          setSection("Campaigns"); setEditingRecordId(campaign.id); setEditingLocationId(null);
-          setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true); setReturnToCampaignId(null);
-        }
-      } else {
-        setDraft({ name: "", campaign_id: targetCampaignId, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true });
-      }
+      setNotice("Added “" + payload.name + "” to this campaign. Its original pin is unchanged. Add more locations now, then click Finish & return to movie.");
     } catch (e: any) {
       setError(e?.message || "Could not reuse this campaign location.");
     } finally { setBusy(false); }
+  }
+
+  function finishLocationFlow() {
+    const targetCampaignId = returnToCampaignId;
+    if (!targetCampaignId) { setError("No movie campaign is attached to this location workflow."); return; }
+    if (String(draft.name || "").trim() || String(draft.latitude ?? "").trim() || String(draft.longitude ?? "").trim()) {
+      setError("This location form has unsaved details. Add the location first, or use Clear draft before finishing."); return;
+    }
+    const campaign = (rows.Campaigns || []).find(item => item.id === targetCampaignId);
+    if (!campaign) { setError("The campaign could not be found. Refresh and open the movie campaign again."); return; }
+    setSection("Campaigns");
+    setEditingRecordId(campaign.id);
+    setEditingLocationId(null);
+    setReturnToCampaignId(null);
+    setDraft({ ...campaign, selected_task_keys: [], task_points: {} });
+    setShowAdd(true);
+    setLocationPickerSearch("");
+    setError("");
+    setNotice("Saved campaign locations are now visible in the movie campaign editor.");
   }
 
   function useVenueDetails(venue: RecordRow) {
@@ -439,13 +474,15 @@ export default function App() {
       category,
       venue_id: venue.id,
       address,
-      latitude: "",
-      longitude: "",
+      latitude: venue.latitude == null ? "" : String(venue.latitude),
+      longitude: venue.longitude == null ? "" : String(venue.longitude),
       description: current.description || "",
       points: current.points ?? 20,
       is_active: true,
     }));
-    setNotice("Venue details loaded. This venue does not yet have a saved campaign map point, so enter its latitude and longitude below to finish the pin.");
+    setNotice(venue.latitude != null && venue.longitude != null
+      ? "Venue details and saved coordinates loaded. You can still adjust the map pin for this campaign."
+      : "Venue details loaded. Save this venue's latitude and longitude in Venues, or enter coordinates for this campaign map pin.");
     setError("");
   }
 
@@ -464,10 +501,11 @@ export default function App() {
         return { kind: "map-point" as const, id: location.id, item: location, title, subtitle, searchText: [title, subtitle].join(" ").toLowerCase() };
       });
     const venues = (rows.Venues || [])
-      .filter(venue => venue.active !== false && !campaignLocations.some(location => location.venue_id === venue.id))
+      .filter(venue => venue.active !== false)
       .map(venue => {
         const title = String(venue.name || "Unnamed venue");
-        const subtitle = [label(venue.venue_type || "venue"), venue.city, venue.state, venue.address, venue.pincode].filter(Boolean).join(" · ");
+        const subtitle = [label(venue.venue_type || "venue"), venue.city, venue.state, venue.address, venue.pincode,
+          venue.latitude != null && venue.longitude != null ? Number(venue.latitude).toFixed(5) + ", " + Number(venue.longitude).toFixed(5) : "coordinates not saved"].filter(Boolean).join(" · ");
         return { kind: "venue" as const, id: venue.id, item: venue, title, subtitle, searchText: [title, subtitle].join(" ").toLowerCase() };
       });
     return [...points, ...venues].filter(result => !query || result.searchText.includes(query)).slice(0, 8);
@@ -487,6 +525,7 @@ export default function App() {
           linked_movies: movieTitles.join(" · ") || "Not linked to a movie yet",
           linked_campaigns: linkedCampaigns.map(campaign => campaign.name).join(" · ") || "Not linked to a campaign yet",
           linked_locations: locationLinks.length,
+          coordinates: venue.latitude != null && venue.longitude != null ? Number(venue.latitude).toFixed(5) + ", " + Number(venue.longitude).toFixed(5) : "Coordinates not saved",
         };
       }).filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()));
     }
@@ -731,6 +770,8 @@ export default function App() {
           <label>State<input value={draft.state || ""} onChange={e => setDraft({...draft,state:e.target.value})} placeholder="Tamil Nadu"/></label>
           <label>Pincode<input value={draft.pincode || ""} onChange={e => setDraft({...draft,pincode:e.target.value})}/></label>
           <label>Address<input value={draft.address || ""} onChange={e => setDraft({...draft,address:e.target.value})}/></label>
+          <div className="qr-field-row venue-coordinates-row"><label>Venue latitude<input type="number" step="any" min="-90" max="90" value={draft.latitude ?? ""} onChange={e => setDraft({...draft,latitude:e.target.value})} placeholder="13.0827"/></label><label>Venue longitude<input type="number" step="any" min="-180" max="180" value={draft.longitude ?? ""} onChange={e => setDraft({...draft,longitude:e.target.value})} placeholder="80.2707"/></label></div>
+          <small className="field-help">Store the venue's general coordinates once. A campaign location may use these by default and still override them for a specific entrance, shop or QR placement.</small>
           <label>Contact person<input value={draft.contact_person || ""} onChange={e => setDraft({...draft,contact_person:e.target.value})}/></label>
           <label>Phone<input type="tel" value={draft.phone || ""} onChange={e => setDraft({...draft,phone:e.target.value})}/></label>
           <label>Email<input type="email" value={draft.email || ""} onChange={e => setDraft({...draft,email:e.target.value})}/></label>
@@ -738,7 +779,8 @@ export default function App() {
           <label className="inline-check"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({...draft,active:e.target.checked})}/> Venue is active</label>
         </>}
         {section === "Campaign Locations" && <>
-          <p className="form-intro">A campaign location is a map pin for this specific campaign—not a second venue record. Search below to copy a saved campaign map point into this campaign, or select a venue with no saved pin and complete its coordinates. Maintain the physical venue details once in Venues.</p>
+          <p className="form-intro">A campaign location is a map pin for this specific campaign—not a second venue record. Search below to copy a saved campaign map point into this campaign, or select a reusable venue and use its saved coordinates. Maintain physical venue details once in Venues.</p>
+          {returnToCampaignId && <section className="location-batch-panel"><div><b>Adding places to {(rows.Movies || []).find(movie => movie.id === (rows.Campaigns || []).find(campaign => campaign.id === returnToCampaignId)?.movie_id)?.title || "this movie"}</b><small>{(rows["Campaign Locations"] || []).filter(location => location.campaign_id === returnToCampaignId).length} campaign location(s) saved so far. Keep adding pins here; finish when ready.</small></div><button type="button" className="secondary" onClick={finishLocationFlow}>Finish & return to movie</button></section>}
           <label>Campaign / movie <span className="required-mark">Required</span><select required value={draft.campaign_id || ""} onChange={e => setDraft({...draft,campaign_id:e.target.value})}><option value="">Choose a campaign…</option>{(rows.Campaigns || []).map(campaign => { const movie = (rows.Movies || []).find(item => item.id === campaign.movie_id); return <option key={campaign.id} value={campaign.id}>{movie?.title || "Movie not linked"} · {campaign.name}{campaign.active ? "" : " (inactive)"}</option>; })}</select>{!(rows.Campaigns || []).length && <small className="field-help">Create a campaign first from the Campaigns panel.</small>}</label>
           {!editingLocationId && <section className="location-library">
             <div className="location-library-head"><div><h4>Find an existing location</h4><p>Search saved map pins by location, venue, campaign, movie or address. Selecting a map pin copies its details into this campaign; the original stays unchanged.</p></div></div>
@@ -760,14 +802,14 @@ export default function App() {
           <div className="location-manual-heading"><h4>{editingLocationId ? "Map point details" : "Or create a new campaign map point"}</h4><p>Use these fields when there is no existing map pin to reuse. A venue record alone does not contain map coordinates.</p></div>
           <label>Location name <span className="required-mark">Required</span><input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})} placeholder="e.g. Express Avenue QR activation"/></label>
           <label>Category <span className="required-mark">Required</span><select required value={draft.category || ""} onChange={e => setDraft({...draft,category:e.target.value})}><option value="">Choose category…</option>{Array.from(new Set([...LOCATION_CATEGORIES,...(rows["Campaign Locations"] || []).map(location => location.category).filter(Boolean)])).map(category => <option key={category} value={category}>{label(category)}</option>)}</select></label>
-          <label>Physical venue (optional)<select value={draft.venue_id || ""} onChange={e => setDraft({...draft,venue_id:e.target.value})}><option value="">Map point only — no venue record</option>{(rows.Venues || []).filter(venue => venue.active !== false).map(venue => <option key={venue.id} value={venue.id}>{venue.name}{venue.city ? " · " + venue.city : ""}{venue.venue_type ? " · " + venue.venue_type : ""}</option>)}</select><small className="field-help">Choose a saved mall, college, shop or other venue to show the campaign/movie against that physical place.</small></label>
+          <label>Physical venue (optional)<select value={draft.venue_id || ""} onChange={e => { const venue = (rows.Venues || []).find(item => item.id === e.target.value); const address = venue ? [venue.address, venue.city, venue.state, venue.pincode].filter(value => String(value || "").trim()).join(", ") : ""; setDraft({...draft,venue_id:e.target.value,address:!draft.address && address ? address : draft.address,latitude:String(draft.latitude ?? "").trim() === "" ? (venue?.latitude == null ? "" : String(venue.latitude)) : draft.latitude,longitude:String(draft.longitude ?? "").trim() === "" ? (venue?.longitude == null ? "" : String(venue.longitude)) : draft.longitude}); }}><option value="">Map point only — no venue record</option>{(rows.Venues || []).filter(venue => venue.active !== false).map(venue => <option key={venue.id} value={venue.id}>{venue.name}{venue.city ? " · " + venue.city : ""}{venue.venue_type ? " · " + venue.venue_type : ""}</option>)}</select><small className="field-help">Saved venue coordinates and address prefill empty fields. You can use different coordinates for an entrance or an individual campaign placement.</small></label>
           <div className="qr-field-row"><label>Latitude <span className="required-mark">Required</span><input required type="number" step="any" min="-90" max="90" value={draft.latitude ?? ""} onChange={e => setDraft({...draft,latitude:e.target.value})} placeholder="13.0827"/></label><label>Longitude <span className="required-mark">Required</span><input required type="number" step="any" min="-180" max="180" value={draft.longitude ?? ""} onChange={e => setDraft({...draft,longitude:e.target.value})} placeholder="80.2707"/></label></div>
           <label>Address / directions<input value={draft.address || ""} onChange={e => setDraft({...draft,address:e.target.value})} placeholder="Street, landmark, city"/></label>
           <label>Description<textarea rows={2} value={draft.description || ""} onChange={e => setDraft({...draft,description:e.target.value})} placeholder="What should participants find or do here?"/></label>
           <label>Points for reaching this location<input type="number" min="0" step="1" value={draft.points ?? 0} onChange={e => setDraft({...draft,points:e.target.value})}/><small className="field-help">This is the location's points field; task rewards are configured separately.</small></label>
           <label className="inline-check"><input type="checkbox" checked={draft.is_active !== false} onChange={e => setDraft({...draft,is_active:e.target.checked})}/> Campaign location is active</label>
         </>}
-        <div className="form-actions"><button type="button" className="secondary" onClick={() => { const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null; setShowAdd(false); setEditingLocationId(null); setEditingRecordId(null); setDraft({}); setReturnToCampaignId(null); setLocationPickerSearch(""); if (backToCampaignId) { const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId); if (campaign) { setSection("Campaigns"); setEditingRecordId(campaign.id); setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true); } } }}>Cancel</button><button className="button" disabled={busy || (section === "Campaigns" && !(rows.Movies || []).length) || (section === "Campaign Locations" && !(rows.Campaigns || []).length)}>{busy ? "Saving…" : editingLocationId || editingRecordId ? "Save changes" : section === "Campaigns" ? "Create campaign + tasks" : section === "Campaign Locations" ? "Add campaign location" : "Create record"}</button></div>
+        <div className="form-actions"><button type="button" className="secondary" onClick={() => { if (section === "Campaign Locations" && returnToCampaignId) { setEditingLocationId(null); setEditingRecordId(null); setDraft({ name: "", campaign_id: returnToCampaignId, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true }); setError(""); setNotice("Unsaved location details cleared. You can continue adding pins or finish."); return; } const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null; setShowAdd(false); setEditingLocationId(null); setEditingRecordId(null); setDraft({}); setReturnToCampaignId(null); setLocationPickerSearch(""); if (backToCampaignId) { const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId); if (campaign) { setSection("Campaigns"); setEditingRecordId(campaign.id); setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true); } } }}>{returnToCampaignId ? "Clear draft" : "Cancel"}</button>{returnToCampaignId && section === "Campaign Locations" && <button type="button" className="secondary" disabled={busy} onClick={finishLocationFlow}>Finish & return to movie</button>}<button className="button" disabled={busy || (section === "Campaigns" && !(rows.Movies || []).length) || (section === "Campaign Locations" && !(rows.Campaigns || []).length)}>{busy ? "Saving…" : editingLocationId || editingRecordId ? "Save changes" : section === "Campaigns" ? "Create campaign + tasks" : section === "Campaign Locations" ? returnToCampaignId ? "Add location & continue" : "Add campaign location" : "Create record"}</button></div>
       </form>}
       <div className="toolbar"><div className="search"><Search size={16}/><input placeholder={section === "QR Manager" ? "Search by QR name, code, venue, purpose…" : "Search " + section.toLowerCase()} value={search} onChange={e => setSearch(e.target.value)}/></div><span>{visibleRows.length} records</span></div>
       {section === "QR Manager" && selectedQr && <form className="qr-editor" onSubmit={saveQr}>
