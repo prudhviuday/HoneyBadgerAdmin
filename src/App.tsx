@@ -215,7 +215,7 @@ export default function App() {
       if (!result.error) nextCounts[result.name] = result.count;
     });
     if (failed.length) {
-      setLoadWarning("Some admin data could not be loaded (" + failed.map(result => result.name + ": " + result.error.message).join("; ") + "). The last successful data is retained where available. Refresh after checking permissions or schema.");
+      setLoadWarning("Some admin data could not be loaded (" + failed.map(result => result.name + ": " + (result.error?.message || "unknown error")).join("; ") + "). The last successful data is retained where available. Refresh after checking permissions or schema.");
     } else {
       setLoadWarning("");
     }
@@ -984,7 +984,7 @@ export default function App() {
         </>}
         {section === "Campaign Locations" && <>
           <p className="form-intro">A campaign location is a map pin for this specific campaign—not a second venue record. Search below to copy a saved campaign map point into this campaign, or select a reusable venue and use its saved coordinates. Maintain physical venue details once in Venues.</p>
-          {returnToCampaignId && <section className="location-batch-panel"><div><b>Adding places to {(rows.Movies || []).find(movie => movie.id === (rows.Campaigns || []).find(campaign => campaign.id === returnToCampaignId)?.movie_id)?.title || "this movie"}</b><small>{(rows["Campaign Locations"] || []).filter(location => location.campaign_id === returnToCampaignId).length} campaign location(s) saved so far. Keep adding pins here; finish when ready.</small></div><button type="button" className="secondary" onClick={finishLocationFlow}>Finish & return to movie</button></section>}
+          {returnToCampaignId && <section className="location-batch-panel"><div><b>Adding places to {(rows.Movies || []).find(movie => movie.id === (rows.Campaigns || []).find(campaign => campaign.id === returnToCampaignId)?.movie_id)?.title || "this movie"}</b><small>{(rows["Campaign Locations"] || []).filter(location => location.campaign_id === returnToCampaignId).length} campaign location(s) saved so far. Keep adding pins here; finish when ready.</small></div><button type="button" className="secondary" onClick={() => finishLocationFlow()}>Finish & return to movie</button></section>}
           <label>Campaign / movie <span className="required-mark">Required</span><select required value={draft.campaign_id || ""} onChange={e => setDraft({...draft,campaign_id:e.target.value})}><option value="">Choose a campaign…</option>{(rows.Campaigns || []).map(campaign => { const movie = (rows.Movies || []).find(item => item.id === campaign.movie_id); return <option key={campaign.id} value={campaign.id}>{movie?.title || "Movie not linked"} · {campaign.name}{campaign.active ? "" : " (inactive)"}</option>; })}</select>{!(rows.Campaigns || []).length && <small className="field-help">Create a campaign first from the Campaigns panel.</small>}</label>
           {!editingLocationId && <section className="location-library">
             <div className="location-library-head"><div><h4>Find an existing location</h4><p>Search saved map pins by location, venue, campaign, movie or address. Selecting a map pin copies its details into this campaign; the original stays unchanged.</p></div></div>
