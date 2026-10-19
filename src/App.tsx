@@ -499,7 +499,35 @@ export default function App() {
           <label>Campaign media / trailer URL<input type="url" value={draft.media_url || ""} onChange={e => setDraft({...draft,media_url:e.target.value})} placeholder="Defaults to the movie trailer URL"/></label>
           <label>Terms and conditions URL<input type="url" value={draft.terms_url || ""} onChange={e => setDraft({...draft,terms_url:e.target.value})} placeholder="https://…"/></label>
           <label className="inline-check"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({...draft,active:e.target.checked})}/> Campaign is active</label>
-          <div className="campaign-task-picker">
+          {editingRecordId && <section className="campaign-location-manager">
+            <div className="campaign-location-manager-head">
+              <div><h4>Locations for this campaign</h4><p>These are the map points users can discover for this movie campaign.</p></div>
+              <button type="button" className="button" onClick={() => {
+                const campaignIdForLocation = editingRecordId;
+                setReturnToCampaignId(campaignIdForLocation);
+                setEditingRecordId(null); setEditingLocationId(null);
+                setSection("Campaign Locations");
+                setDraft({ name: "", campaign_id: campaignIdForLocation, category: "shopping", venue_id: "", latitude: "", longitude: "", address: "", description: "", points: 20, is_active: true });
+                setShowAdd(true); setError(""); setNotice("");
+              }}><Plus size={14}/> Add location</button>
+            </div>
+            <div className="campaign-location-inline-list">
+              {(rows["Campaign Locations"] || []).filter(location => location.campaign_id === editingRecordId).map(location => {
+                const venue = (rows.Venues || []).find(item => item.id === location.venue_id);
+                return <article className="campaign-location-inline-row" key={location.id}>
+                  <div><b>{location.name}</b><small>{label(location.category || "other")} · {venue ? venue.name : "Map point only"} · {Number(location.latitude).toFixed(5)}, {Number(location.longitude).toFixed(5)}</small></div>
+                  <span className={location.is_active ? "badge yes" : "badge"}>{location.is_active ? "Active" : "Paused"}</span>
+                  <button type="button" className="secondary" onClick={() => {
+                    setReturnToCampaignId(String(editingRecordId));
+                    setSection("Campaign Locations");
+                    openLocationEditor(location);
+                  }}>Edit</button>
+                </article>;
+              })}
+              {!(rows["Campaign Locations"] || []).some(location => location.campaign_id === editingRecordId) && <div className="empty">No locations linked yet. Add the first location above.</div>}
+            </div>
+          </section>}
+          {!editingRecordId && <div className="campaign-task-picker">
             <div className="campaign-task-picker-head"><div><h4>Standard campaign tasks</h4><p>Select the tasks participants can complete for points. Rewards can be adjusted per campaign.</p></div><span>{(Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).length} selected</span></div>
             <details className="campaign-task-dropdown">
               <summary><span>Choose tasks and adjust points</span><span>{(Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).length} selected <span aria-hidden="true">⌄</span></span></summary>
@@ -518,7 +546,7 @@ export default function App() {
             {!(rows.Movies || []).length && <p className="field-help">Create a movie before a campaign. Campaigns with no movie are not allowed in this form.</p>}
             {(!taskSchema.progress || !taskSchema.verification) && <p className="field-help">This database currently has the legacy task schema. QR-scan tasks can still be created, but the server-configured verification and task-progress fields will only be saved after their migrations are applied.</p>}
             <p className="field-help">Important: “Watch trailer” is shown as locked because opening a URL is not proof of watching. Once the app has a trusted watch verifier, it can be enabled here safely.</p>
-          </div>
+          </div>}
         </>}
         {section === "Venues" && <>
           <p className="form-intro">Create a reusable physical venue once. Attach it to individual campaigns from Campaign Locations; a venue can be used by several movie campaigns.</p>
