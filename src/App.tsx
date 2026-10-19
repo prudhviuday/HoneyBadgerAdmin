@@ -261,13 +261,18 @@ export default function App() {
           }
         }
         setNotice("Campaign created and " + selectedTasks.length + " standard task(s) attached to it.");
+      } else if (section === "Campaign Locations" && editingLocationId) {
+        const { data: updated, error: updateError } = await db.from("locations").update(payload).eq("id", editingLocationId).select("id");
+        if (updateError) throw new Error("Could not update campaign location: " + updateError.message);
+        if (!updated?.length) throw new Error("No location was updated. Refresh and check admin permissions.");
+        setNotice("Campaign location updated, including its campaign/movie and optional physical venue association.");
       } else {
         const { error: insertError } = await db.from(table).insert(payload);
         if (insertError) throw new Error("Could not create record: " + insertError.message);
         if (section === "Campaign Locations") setNotice("Campaign location created and attached to the selected campaign and map. The linked movie is derived from that campaign.");
         else setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
       }
-      setShowAdd(false); setDraft({}); await loadData();
+      setShowAdd(false); setDraft({}); setEditingLocationId(null); await loadData();
     } catch (e: any) {
       setError(e?.message || "Could not create this record.");
     } finally {
@@ -334,6 +339,23 @@ export default function App() {
     });
   }, [rows, section, search, qrFilters]);
   const total = (name: string) => (rows[name] || []).length;
+
+  function openLocationEditor(row: RecordRow) {
+    const raw = (rows["Campaign Locations"] || []).find(item => item.id === row.id) || row;
+    setEditingLocationId(raw.id);
+    setDraft({
+      ...raw,
+      latitude: String(raw.latitude ?? ""),
+      longitude: String(raw.longitude ?? ""),
+      points: String(raw.points ?? 0),
+      venue_id: raw.venue_id || "",
+    });
+    setError("");
+    setNotice("");
+    setShowAdd(true);
+    window.setTimeout(() => document.querySelector(".add-form")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
   const campaignTaskLockReason = (task: CampaignTaskTemplate): string | null => {
     if (task.lockedReason) return task.lockedReason;
     if (taskSchema.progress && !taskSchema.verification && ["scan_first_qr", "scan_three_qrs", "visit_three_locations"].includes(task.key)) {
@@ -518,7 +540,7 @@ export default function App() {
         <label>Status<select value={qrFilters.is_active} onChange={e => setQrFilters({...qrFilters,is_active:e.target.value})}><option value="">All statuses</option><option value="true">Active</option><option value="false">Inactive</option></select></label>
         <button type="button" className="secondary qr-clear-filters" onClick={() => { setQrFilters({purpose:"",campaign_id:"",venue_id:"",is_active:""}); setSearch(""); }}>Clear filters</button>
       </div>}
-      <div className="panel"><DataTable rows={visibleRows} columns={columns[section] || []} onRowClick={section === "QR Manager" ? openQrEditor : undefined}/></div>
+      <div className="panel"><DataTable rows={visibleRows} columns={columns[section] || []} onRowClick={section === "Campaign Locations" ? openLocationEditor : section === "QR Manager" ? openQrEditor : undefined}/></div>
       </>}
       <footer>HONEYBADGER ADMIN <span>Live data from Supabase</span></footer></div>
     </main>
@@ -528,7 +550,7 @@ export default function App() {
 function DataTable({rows, columns = [], onRowClick}: {rows: RecordRow[]; columns?: string[]; onRowClick?: (row: RecordRow) => void}) {
   if (!rows.length) return <div className="empty">No records found.</div>;
   const keys = columns.length ? columns : Object.keys(rows[0]).filter(k => !["id","created_at","updated_at","metadata"].includes(k)).slice(0,5);
-  return <div className="table-scroll"><table><thead><tr>{keys.map(k=><th key={k}>{label(k)}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.id || i} className={onRowClick ? "clickable-row" : undefined} onClick={onRowClick ? () => onRowClick(r) : undefined} title={onRowClick ? "Click to view and edit QR details" : undefined}>{keys.map(k=><td key={k}>{typeof r[k] === "boolean" ? <span className={r[k] ? "badge yes" : "badge"}>{r[k] ? "Active" : "Inactive"}</span> : r[k] == null || r[k] === "" ? "—" : String(r[k]).length > 70 ? String(r[k]).slice(0,67)+"…" : String(r[k])}</td>)}</tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr>{keys.map(k=><th key={k}>{label(k)}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.id || i} className={onRowClick ? "clickable-row" : undefined} onClick={onRowClick ? () => onRowClick(r) : undefined} title={onRowClick ? "Click to view and edit details" : undefined}>{keys.map(k=><td key={k}>{typeof r[k] === "boolean" ? <span className={r[k] ? "badge yes" : "badge"}>{r[k] ? "Active" : "Inactive"}</span> : r[k] == null || r[k] === "" ? "—" : String(r[k]).length > 70 ? String(r[k]).slice(0,67)+"…" : String(r[k])}</td>)}</tr>)}</tbody></table></div>;
 }
 
 
