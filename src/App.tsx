@@ -998,10 +998,10 @@ export default function App() {
                 <button type="button" className="secondary location-library-action" disabled={busy || !draft.campaign_id || String(result.item.campaign_id) === String(draft.campaign_id)} onClick={() => void addExistingMapPointToCampaign(result.item)}>{!draft.campaign_id ? "Choose campaign" : String(result.item.campaign_id) === String(draft.campaign_id) ? "Already added" : returnToCampaignId ? "Add & keep going" : "Add to campaign"}</button>
               </article> : <article className="location-library-result" key={"venue-" + result.id}>
                 <span className="location-library-icon"><Building2 size={16}/></span>
-                <div className="location-library-copy"><b>{result.title}</b><small>{result.subtitle} · No saved map pin yet</small></div>
+                <div className="location-library-copy"><b>{result.title}</b><small>{result.subtitle} · Create a campaign-specific map pin from this venue</small></div>
                 <button type="button" className="secondary location-library-action" disabled={busy} onClick={() => useVenueDetails(result.item)}>Use venue</button>
               </article>)}
-              {locationLibraryResults.length === 0 && <div className="location-library-empty">No matching saved map points or unused venues. You can create a new campaign map point below.</div>}
+              {locationLibraryResults.length === 0 && <div className="location-library-empty">No matching saved map points or reusable venues. You can create a new campaign map point below.</div>}
             </div>
             <small className="field-help">Venues hold reusable physical-place details. Campaign Locations hold campaign-specific coordinates and game settings.</small>
           </section>}
