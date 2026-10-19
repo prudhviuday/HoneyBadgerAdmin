@@ -213,6 +213,8 @@ export default function App() {
       payload.description = emptyToNull(payload.description);
       payload.address = emptyToNull(payload.address);
       payload.is_active = payload.is_active !== false;
+      delete payload.id;
+      delete payload.created_at;
     }
 
     const selectedTaskKeys = section === "Campaigns" && Array.isArray(payload.selected_task_keys) ? payload.selected_task_keys as string[] : [];
