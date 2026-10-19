@@ -176,3 +176,13 @@
   .campaign-task-picker-head{flex-direction:column}
   .campaign-task-choice{grid-template-columns:minmax(0,1fr) 90px;gap:8px;padding:10px}
 }
+
+.campaign-task-dropdown{border:1px solid #383941;border-radius:8px;background:#1b1c22;overflow:hidden}
+.campaign-task-dropdown>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;cursor:pointer;list-style:none;color:#eee;font-size:11px;font-weight:600}
+.campaign-task-dropdown>summary::-webkit-details-marker{display:none}
+.campaign-task-dropdown>summary::after{content:"";display:none}
+.campaign-task-dropdown>summary span:last-child{flex:none;color:#ffad7d;font:10px 'DM Mono',monospace}
+.campaign-task-dropdown[open]>summary{border-bottom:1px solid #303139;background:#202126}
+.campaign-task-dropdown .campaign-task-list{padding:9px}
+.campaign-task-dropdown .campaign-task-choice{background:#15161a}
+.campaign-task-dropdown .campaign-task-choice.is-locked{background:#18191e}
