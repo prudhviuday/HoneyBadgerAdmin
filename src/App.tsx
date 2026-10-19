@@ -371,14 +371,16 @@ export default function App() {
         {section === "Campaigns" && <>
           <p className="form-intro">A campaign belongs to one existing movie. Choose the movie first; the production company can inherit from that movie.</p>
           <label>Campaign name <span className="required-mark">Required</span><input required value={draft.name || ""} onChange={e => setDraft({...draft,name:e.target.value})} placeholder="e.g. Mandaadi • Chennai City Hunt"/></label>
-          <label>Movie <span className="required-mark">Required</span><select required value={draft.movie_id || ""} onChange={e => { const movie = (rows.Movies || []).find(item => item.id === e.target.value); setDraft({...draft,movie_id:e.target.value,media_url:draft.media_url || movie?.trailer_url || ""}); }}><option value="">Choose an existing movie…</option>{(rows.Movies || []).filter(movie => movie.active !== false).map(movie => <option key={movie.id} value={movie.id}>{movie.title}{movie.language ? " · " + movie.language : ""}{movie.release_date ? " · " + movie.release_date : ""}</option>)}</select>{!(rows.Movies || []).length && <small className="field-help">No movie exists yet. Cancel and create one from the Movies panel first.</small>}</label>
+          <label>Movie <span className="required-mark">Required</span><select required value={draft.movie_id || ""} onChange={e => { const movie = (rows.Movies || []).find(item => item.id === e.target.value); const previousMovie = (rows.Movies || []).find(item => item.id === draft.movie_id); const currentMediaIsMovieTrailer = !draft.media_url || draft.media_url === previousMovie?.trailer_url; setDraft({...draft,movie_id:e.target.value,media_url:currentMediaIsMovieTrailer ? movie?.trailer_url || "" : draft.media_url}); }}><option value="">Choose an existing movie…</option>{(rows.Movies || []).filter(movie => movie.active !== false).map(movie => <option key={movie.id} value={movie.id}>{movie.title}{movie.language ? " · " + movie.language : ""}{movie.release_date ? " · " + movie.release_date : ""}</option>)}</select>{!(rows.Movies || []).length && <small className="field-help">No movie exists yet. Cancel and create one from the Movies panel first.</small>}</label>
           <label>Client / production company<select value={draft.client_id || ""} onChange={e => setDraft({...draft,client_id:e.target.value})}><option value="">Use the movie's production company</option>{(rows.Clients || []).filter(client => client.active !== false).map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select><small className="field-help">Leave this as-is to inherit the selected movie's client.</small></label>
           <label>Campaign media / trailer URL<input type="url" value={draft.media_url || ""} onChange={e => setDraft({...draft,media_url:e.target.value})} placeholder="Defaults to the movie trailer URL"/></label>
           <label>Terms and conditions URL<input type="url" value={draft.terms_url || ""} onChange={e => setDraft({...draft,terms_url:e.target.value})} placeholder="https://…"/></label>
           <label className="inline-check"><input type="checkbox" checked={draft.active !== false} onChange={e => setDraft({...draft,active:e.target.checked})}/> Campaign is active</label>
           <div className="campaign-task-picker">
             <div className="campaign-task-picker-head"><div><h4>Standard campaign tasks</h4><p>Select the tasks participants can complete for points. Rewards can be adjusted per campaign.</p></div><span>{(Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).length} selected</span></div>
-            <div className="campaign-task-list">
+            <details className="campaign-task-dropdown">
+              <summary><span>Choose tasks and adjust points</span><span>{(Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).length} selected <span aria-hidden="true">⌄</span></span></summary>
+              <div className="campaign-task-list">
               {STANDARD_CAMPAIGN_TASKS.map(task => {
                 const checked = (Array.isArray(draft.selected_task_keys) ? draft.selected_task_keys : []).includes(task.key);
                 const locked = !!task.lockedReason;
@@ -387,7 +389,8 @@ export default function App() {
                   <div className="campaign-task-reward"><label>Points<input type="number" min="0" step="1" disabled={locked} value={draft.task_points?.[task.key] ?? task.reward_points} onChange={e => setDraft({...draft,task_points:{...(draft.task_points || {}),[task.key]:e.target.value}})}/></label></div>
                 </div>;
               })}
-            </div>
+              </div>
+            </details>
             {!(rows.Movies || []).length && <p className="field-help">Create a movie before a campaign. Campaigns with no movie are not allowed in this form.</p>}
             {(!taskSchema.progress || !taskSchema.verification) && <p className="field-help">This database currently has the legacy task schema. QR-scan tasks can still be created, but the server-configured verification and task-progress fields will only be saved after their migrations are applied.</p>}
             <p className="field-help">Important: “Watch trailer” is shown as locked because opening a URL is not proof of watching. Once the app has a trusted watch verifier, it can be enabled here safely.</p>
