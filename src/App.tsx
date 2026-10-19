@@ -149,6 +149,7 @@ export default function App() {
     if (!table || !["Movies", "Clients", "Campaigns", "Venues", "Campaign Locations"].includes(section)) return;
 
     const payload: RecordRow = { ...draft };
+    if (editingRecordId || editingLocationId) { delete payload.id; delete payload.created_at; delete payload.updated_at; }
     const emptyToNull = (value: unknown) => String(value ?? "").trim() || null;
     const optionalFields = (row: RecordRow, fields: string[]) => {
       for (const field of fields) row[field] = emptyToNull(row[field]);
@@ -233,7 +234,7 @@ export default function App() {
 
     setBusy(true); setError(""); setNotice("");
     try {
-      if (section === "Campaigns") {
+      if (section === "Campaigns" && !editingRecordId) {
         const { data: campaign, error: campaignError } = await db.from("campaigns").insert(payload).select("id").single();
         if (campaignError || !campaign) throw new Error("Could not create campaign: " + (campaignError?.message || "No campaign row was returned."));
         if (selectedTasks.length) {
@@ -270,13 +271,27 @@ export default function App() {
         if (updateError) throw new Error("Could not update campaign location: " + updateError.message);
         if (!updated?.length) throw new Error("No location was updated. Refresh and check admin permissions.");
         setNotice("Campaign location updated, including its campaign/movie and optional physical venue association.");
+      } else if (editingRecordId && ["Movies", "Clients", "Campaigns", "Venues"].includes(section)) {
+        const { data: updated, error: updateError } = await db.from(table).update(payload).eq("id", editingRecordId).select("id");
+        if (updateError) throw new Error("Could not update record: " + updateError.message);
+        if (!updated?.length) throw new Error("No record was updated. Refresh and check admin permissions.");
+        setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : section === "Campaigns" ? "Campaign" : "Venue") + " updated successfully.");
       } else {
         const { error: insertError } = await db.from(table).insert(payload);
         if (insertError) throw new Error("Could not create record: " + insertError.message);
         if (section === "Campaign Locations") setNotice("Campaign location created and attached to the selected campaign and map. The linked movie is derived from that campaign.");
         else setNotice((section === "Movies" ? "Movie" : section === "Clients" ? "Client" : "Venue") + " created successfully.");
       }
-      setShowAdd(false); setDraft({}); setEditingLocationId(null); await loadData();
+      const backToCampaignId = section === "Campaign Locations" ? returnToCampaignId : null;
+      setShowAdd(false); setDraft({}); setEditingLocationId(null); setEditingRecordId(null); setReturnToCampaignId(null);
+      await loadData();
+      if (backToCampaignId) {
+        const campaign = (rows.Campaigns || []).find(item => item.id === backToCampaignId);
+        if (campaign) {
+          setSection("Campaigns"); setEditingRecordId(campaign.id);
+          setDraft({ ...campaign, selected_task_keys: [], task_points: {} }); setShowAdd(true);
+        }
+      }
     } catch (e: any) {
       setError(e?.message || "Could not create this record.");
     } finally {
